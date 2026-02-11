@@ -45,7 +45,8 @@ export default function CustomerHomePage({ logout }) {
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events`);
+      const role = user?.role || 'CUSTOMER';
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events?role=${role}`);
       console.log('Fetch events response:', response);
 
       if (!response.ok) {
@@ -179,7 +180,16 @@ export default function CustomerHomePage({ logout }) {
   };
 
   const filterEvents = () => {
-    let filtered = [...allEvents];
+    const now = new Date();
+    let filtered = allEvents.filter(event => {
+      const isDraft = event.status === 'DRAFT';
+      const isCancelled = event.status === 'CANCELLED';
+      const isOver = new Date(event.endDateTime) < now;
+      return !isDraft && !isCancelled && !isOver;
+    });
+
+    // Sort by start date (ascending)
+    filtered.sort((a, b) => new Date(a.startDateTime) - new Date(b.startDateTime));
 
     if (activeCategory !== 'ALL') {
       filtered = filtered.filter(event =>

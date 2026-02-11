@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../../context/AuthContext';
 import { Calendar, MapPin, DollarSign, Users, Image, Info, Phone, Mail, Clock, Save, Plus, X, CheckCircle2, AlertCircle } from 'lucide-react';
 import RoleGuard from "../components/RoleGuard";
 
@@ -567,8 +567,8 @@ export default function AdminEventForm({ initialData = null, onSubmit }) {
 
                                     return (
                                         <div key={index} className={`bg-background-elevated p-6 rounded-2xl border-2 transition-all relative group ${isZoneValid
-                                                ? 'border-accent/50 hover:border-accent'
-                                                : 'border-destructive/30 hover:border-destructive/50'
+                                            ? 'border-accent/50 hover:border-accent'
+                                            : 'border-destructive/30 hover:border-destructive/50'
                                             }`}>
                                             <button
                                                 type="button"
@@ -642,8 +642,8 @@ export default function AdminEventForm({ initialData = null, onSubmit }) {
                                                                     <label
                                                                         key={sectionId}
                                                                         className={`flex items-center justify-center p-4 rounded-xl border-2 cursor-pointer transition-all ${isSelected
-                                                                                ? 'bg-primary border-primary text-primary-foreground shadow-lg'
-                                                                                : 'bg-background border-border text-foreground hover:border-primary/60 hover:bg-primary/5'
+                                                                            ? 'bg-primary border-primary text-primary-foreground shadow-lg'
+                                                                            : 'bg-background border-border text-foreground hover:border-primary/60 hover:bg-primary/5'
                                                                             }`}
                                                                     >
                                                                         <input
