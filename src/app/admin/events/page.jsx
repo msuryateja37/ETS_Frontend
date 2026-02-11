@@ -17,7 +17,7 @@ export default function AdminEventsPage() {
     useEffect(() => {
         const fetchEvents = async () => {
             try {
-                const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events`, {
+                const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events?role=ADMIN`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const data = await response.json();
@@ -222,7 +222,7 @@ export default function AdminEventsPage() {
                             </div>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                             {events.map((event, index) => (
                                 <div
                                     key={`${event._id}-${index}`}

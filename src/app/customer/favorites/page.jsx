@@ -38,15 +38,30 @@ export default function FavoritesPage() {
             setIsLoading(true);
             setError(null);
 
+            // Validate token exists before making request
+            if (!token || token.trim() === '') {
+                console.warn('No valid token available');
+                setError('Authentication token is not available. Please log in again.');
+                setIsLoading(false);
+                return;
+            }
+
             const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/customers/user/${user._id}`, {
                 headers: {
-                    'Authorization': `Bearer ${token}`
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
                 }
             });
 
             if (!response.ok) {
                 if (response.status === 401) {
-                    console.warn('Unauthorized access - session expired');
+                    console.warn('Unauthorized access - session expired or invalid token');
+                    setError('Your session has expired. Please log in again.');
+                    // Clear auth state
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('user');
+                    sessionStorage.removeItem('token');
+                    sessionStorage.removeItem('user');
                     setIsLoading(false);
                     return;
                 }
@@ -55,7 +70,8 @@ export default function FavoritesPage() {
                     setIsLoading(false);
                     return;
                 }
-                throw new Error('Failed to fetch customer data');
+                const errorData = await response.json().catch(() => ({ message: 'Failed to fetch customer data' }));
+                throw new Error(errorData.message || 'Failed to fetch customer data');
             }
 
             const customerData = await response.json();
@@ -293,12 +309,26 @@ export default function FavoritesPage() {
                                         </div>
 
                                         {/* Status Badge */}
-                                        {event.status === 'ACTIVE' && (
-                                            <div className="absolute bottom-3 left-3 bg-gradient-to-r from-accent to-accent-dark text-accent-foreground text-xs px-3 py-1 rounded-full font-bold shadow-lg flex items-center gap-1.5 border border-accent">
-                                                <span className="w-1.5 h-1.5 bg-accent-foreground rounded-full animate-pulse"></span>
-                                                Available
-                                            </div>
-                                        )}
+                                        {(() => {
+                                            const now = new Date();
+                                            const isOver = event.endDateTime && new Date(event.endDateTime) < now;
+                                            if (isOver) {
+                                                return (
+                                                    <div className="absolute bottom-3 left-3 bg-muted text-muted-foreground text-xs px-3 py-1 rounded-full font-bold shadow-lg flex items-center gap-1.5 border border-muted">
+                                                        Ended
+                                                    </div>
+                                                );
+                                            }
+                                            if (event.status === 'ACTIVE' || event.status === 'PUBLISHED') {
+                                                return (
+                                                    <div className="absolute bottom-3 left-3 bg-gradient-to-r from-accent to-accent-dark text-accent-foreground text-xs px-3 py-1 rounded-full font-bold shadow-lg flex items-center gap-1.5 border border-accent">
+                                                        <span className="w-1.5 h-1.5 bg-accent-foreground rounded-full animate-pulse"></span>
+                                                        Available
+                                                    </div>
+                                                );
+                                            }
+                                            return null;
+                                        })()}
                                     </div>
 
                                     {/* Content */}

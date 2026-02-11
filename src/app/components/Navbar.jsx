@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/context/AuthContext";
 import { useRouter, usePathname } from "next/navigation";
-import { Home, Search, Ticket, Heart, Settings, Users, LogOut, MessageCircle, MessageSquare, Sparkles, Star } from "lucide-react";
+import { Home, Search, Ticket, Heart, Settings, Users, LogOut, MessageCircle, MessageSquare, Sparkles, Star, Calendar } from "lucide-react";
 import Image from "next/image";
 
 export default function Navbar({ showSearch = false, searchQuery, setSearchQuery, onSearch }) {
@@ -35,6 +35,7 @@ export default function Navbar({ showSearch = false, searchQuery, setSearchQuery
     { icon: Ticket, label: "My Tickets", path: "/customer/tickets" },
     { icon: Heart, label: "Likes", path: "/customer/likes"},
     { icon: Star, label: "Favorites", path: "/customer/favorites" },
+    { icon: Calendar, label: "Past Events", path: "/customer/past-events" },
     { icon: MessageCircle, label: "Contact Us", path: "/customer/contactus" },
   ];
 

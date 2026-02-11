@@ -45,9 +45,15 @@ export default function EventSeatingPage() {
 
         const base = process.env.NEXT_PUBLIC_BACKEND_URI;
 
-        const eventRes = await fetch(`${base}/events/${eventId}`);
+        const role = user?.role || 'CUSTOMER';
+        const eventRes = await fetch(`${base}/events/${eventId}?role=${role}`);
         if (!eventRes.ok) throw new Error("Failed to fetch event details");
         const eventData = await eventRes.json();
+        const now = new Date();
+        if (eventData.endDateTime && new Date(eventData.endDateTime) < now) {
+          // throw new Error("This event has ended. Booking is no longer available.");
+          return;
+        }
         setEvent(eventData);
 
         const venueId = getSafeId(eventData.venueId) || getSafeId(eventData.venue);

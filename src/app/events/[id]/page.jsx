@@ -53,8 +53,9 @@ export default function EventDetailsPage() {
       setLoading(true);
       setError(null);
 
-      const eventRes = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events/${eventId}`);
-      if (!eventRes.ok) throw new Error('Failed to fetch event details');
+      const role = user?.role || 'CUSTOMER';
+      const eventRes = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events/${eventId}?role=${role}`);
+      if (!eventRes.ok) return;
       const eventData = await eventRes.json();
       setEvent(eventData);
 
@@ -507,19 +508,31 @@ export default function EventDetailsPage() {
                 </div>
               )}
 
-              <button
-                onClick={() => {
-                  if (user) {
-                    router.push(`/events/${event._id}/seating`);
-                  } else {
-                    router.push('/auth/login');
-                  }
-                }}
-                className="w-full py-4 bg-gradient-to-r from-primary to-primary-dark hover:from-primary-light hover:to-primary text-primary-foreground font-black rounded-xl shadow-lg shadow-primary/30 transition-all transform hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-3 uppercase tracking-wider text-sm border-2 border-primary"
-              >
-                <Ticket className="w-5 h-5" />
-                Book Tickets Now
-              </button>
+              {(() => {
+                const now = new Date();
+                const isOver = event.endDateTime && new Date(event.endDateTime) < now;
+
+                return (
+                  <button
+                    onClick={() => {
+                      if (isOver) return;
+                      if (user) {
+                        router.push(`/events/${event._id}/seating`);
+                      } else {
+                        router.push('/auth/login');
+                      }
+                    }}
+                    disabled={isOver}
+                    className={`w-full py-4 font-black rounded-xl shadow-lg transition-all transform flex items-center justify-center gap-3 uppercase tracking-wider text-sm border-2 ${isOver
+                      ? 'bg-muted text-muted-foreground border-muted cursor-not-allowed opacity-70'
+                      : 'bg-gradient-to-r from-primary to-primary-dark hover:from-primary-light hover:to-primary text-primary-foreground border-primary hover:scale-[1.02] active:scale-[0.98] shadow-primary/30'
+                      }`}
+                  >
+                    <Ticket className="w-5 h-5" />
+                    {isOver ? 'Booking Closed' : 'Book Tickets Now'}
+                  </button>
+                );
+              })()}
 
               <div className="mt-8 pt-8 border-t-2 border-primary/10 space-y-4">
                 <div className="flex items-center gap-4 text-sm text-muted-foreground p-4 bg-card-elevated rounded-xl border border-primary/10">
