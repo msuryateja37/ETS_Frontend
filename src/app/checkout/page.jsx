@@ -1,0 +1,391 @@
+"use client";
+export const dynamic = "force-dynamic";
+import React, { useState, useEffect, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import Navbar from "../components/Navbar";
+import Footer from "../components/Footer";
+import { useAuth } from "../../context/AuthContext";
+import {
+    CreditCard,
+    Ticket,
+    AlertCircle,
+    CheckCircle2,
+    ChevronRight,
+    ShieldCheck,
+    Calendar,
+    MapPin,
+    Loader2
+} from "lucide-react";
+import RoleGuard from "../components/RoleGuard";
+
+function getSafeId(data) {
+    if (!data) return null;
+    if (typeof data === "string") return data;
+    if (data?.$oid) return data.$oid;
+    if (data?._id) return typeof data._id === "string" ? data._id : getSafeId(data._id);
+    if (data?.id) return typeof data.id === "string" ? data.id : getSafeId(data.id);
+    return null;
+}
+
+function getSectionName(venue, sectionId) {
+    if (!venue?.sections || !sectionId) return "";
+    const sId = getSafeId(sectionId);
+    const section = venue.sections.find(s => getSafeId(s.id) === sId);
+    return section ? section.name : "";
+}
+
+function CheckoutContent() {
+    const searchParams = useSearchParams();
+    const router = useRouter();
+    const { user, token } = useAuth();
+
+    const eventId = searchParams.get("eventId");
+    const seatIdsParam = searchParams.get("seatIds");
+
+    const [event, setEvent] = useState(null);
+    const [venue, setVenue] = useState(null);
+    const [heldSeats, setHeldSeats] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [processing, setProcessing] = useState(false);
+    const [success, setSuccess] = useState(false);
+
+    useEffect(() => {
+        if (!eventId || !seatIdsParam) {
+            setError("Invalid checkout session. Please return to the seating selection.");
+            setLoading(false);
+            return;
+        }
+        const seatIds = seatIdsParam.split(",").map((s) => s.trim()).filter(Boolean);
+        if (seatIds.length === 0) {
+            setError("No seats selected. Please return to the seating selection.");
+            setLoading(false);
+            return;
+        }
+
+        const base = process.env.NEXT_PUBLIC_BACKEND_URI;
+        const fetchData = async () => {
+            try {
+                const eventRes = await fetch(`${base}/events/${eventId}`);
+                if (!eventRes.ok) throw new Error("Event not found");
+                const eventData = await eventRes.json();
+                setEvent(eventData);
+
+                const venueId = getSafeId(eventData.venueId) || getSafeId(eventData.venue);
+                if (venueId) {
+                    const venueRes = await fetch(`${base}/venue/${venueId}`);
+                    if (venueRes.ok) {
+                        const v = await venueRes.json();
+                        setVenue(v);
+                    }
+                }
+
+                const seatsRes = await fetch(`${base}/seats/event/${eventId}`);
+                if (!seatsRes.ok) throw new Error("Failed to fetch seats");
+                const seatsPayload = await seatsRes.json();
+                const allSeats = seatsPayload.seats || [];
+                const idSet = new Set(seatIds);
+                const held = allSeats.filter((s) => idSet.has(getSafeId(s._id)));
+                setHeldSeats(held);
+            } catch (err) {
+                console.error("Checkout fetch error:", err);
+                setError(err.message);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchData();
+    }, [eventId, seatIdsParam]);
+
+    const calculateSubtotal = () => {
+        if (!heldSeats.length) return 0;
+        return heldSeats.reduce((acc, seat) => acc + (Number(seat.price) || 0), 0);
+    };
+
+    const calculateTax = (subtotal) => subtotal * 0.15;
+
+    const handleConfirmPurchase = async () => {
+        const userId = getSafeId(user);
+        if (!userId) {
+            alert("User not authenticated");
+            return;
+        }
+        setProcessing(true);
+        const base = process.env.NEXT_PUBLIC_BACKEND_URI;
+        const seatIds = heldSeats.map((s) => getSafeId(s._id)).filter(Boolean);
+        console.log("Confirming purchase for seats:", seatIds);
+        try {
+            const response = await fetch(`${base}/seats/confirm`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    seatIds,
+                    userId: userId,
+                })
+            });
+
+            if (!response.ok) {
+                const data = await response.json();
+                throw new Error(data.message || "Failed to confirm purchase");
+            }
+
+            setSuccess(true);
+            sessionStorage.removeItem("selectedSeats");
+        } catch (err) {
+            alert(err.message);
+        } finally {
+            setProcessing(false);
+        }
+    };
+
+    if (loading) return (
+        <div className="min-h-screen bg-background">
+            <Navbar />
+            <div className="flex flex-col items-center justify-center h-[70vh]">
+                <Loader2 className="w-12 h-12 text-primary animate-spin mb-4" />
+                <p className="text-muted-foreground">Preparing your checkout...</p>
+            </div>
+        </div>
+    );
+
+    if (error || !event) return (
+        <div className="min-h-screen bg-background">
+            <Navbar />
+            <div className="max-w-xl mx-auto px-4 py-20 text-center">
+                <AlertCircle className="w-16 h-16 text-destructive mx-auto mb-6" />
+                <h1 className="text-2xl font-bold text-foreground mb-4">Something went wrong</h1>
+                <p className="text-muted-foreground mb-8">{error}</p>
+                <button
+                    onClick={() => router.push(`/`)}
+                    className="px-8 py-3 bg-primary text-primary-foreground rounded font-bold hover:bg-primary-dark transition-all"
+                >
+                    Return Home
+                </button>
+            </div>
+        </div>
+    );
+
+    if (success) {
+        return (
+            <RoleGuard allowedRoles={["CUSTOMER"]}>
+                <div className="min-h-screen bg-background">
+                    <Navbar />
+                    <div className="max-w-2xl mx-auto px-4 py-20 text-center">
+                        <div className="w-24 h-24 bg-accent rounded-full flex items-center justify-center mx-auto mb-8">
+                            <CheckCircle2 className="w-12 h-12 text-accent-foreground" />
+                        </div>
+                        <h1 className="text-4xl font-bold text-foreground mb-4">Booking Confirmed!</h1>
+                        <p className="text-lg text-muted-foreground mb-12">
+                            Your tickets for <span className="font-bold text-primary">{event.name}</span> have been sent to your email.
+                        </p>
+
+                        <div className="bg-card rounded-xl border border-border p-8 mb-12">
+                            <h3 className="font-bold text-foreground mb-6 flex items-center">
+                                <Ticket className="w-5 h-5 mr-3 text-primary" />
+                                Reservation Summary
+                            </h3>
+                            <div className="space-y-4">
+                                {heldSeats.map((seat) => (
+                                    <div key={getSafeId(seat._id) || seat.row + seat.seatNumber} className="flex justify-between items-center bg-background-elevated p-4 rounded border border-border">
+                                        <div>
+                                            <p className="font-bold text-foreground">
+                                                {getSectionName(venue, seat.sectionId) && `${getSectionName(venue, seat.sectionId)} - `}
+                                                Row {seat.row}, Seat {seat.seatNumber}
+                                            </p>
+                                            <p className="text-sm text-primary">{seat.zoneName || "Standard"}</p>
+                                        </div>
+                                        <CheckCircle2 className="w-5 h-5 text-accent" />
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="mt-8 pt-8 border-t border-border flex justify-between items-center text-xl">
+                                <span className="font-bold text-foreground">Total Paid</span>
+                                <span className="font-black text-primary">{event.currency || "R"} {(calculateSubtotal() + calculateTax(calculateSubtotal())).toFixed(2)}</span>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                            <button
+                                onClick={() => router.push('/customer/tickets')}
+                                className="px-8 py-3 bg-primary text-primary-foreground rounded font-bold hover:bg-primary-dark transition-all"
+                            >
+                                My Tickets
+                            </button>
+                            <button
+                                onClick={() => router.push('/')}
+                                className="px-8 py-3 bg-transparent border-2 border-primary text-primary rounded font-bold hover:bg-background-hover transition-all"
+                            >
+                                Back to Home
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </RoleGuard>
+        );
+    }
+
+    const subtotal = calculateSubtotal();
+    const tax = calculateTax(subtotal);
+    const total = subtotal + tax;
+
+    return (
+        <RoleGuard allowedRoles={["CUSTOMER"]}>
+            <div className="min-h-screen bg-background">
+                <Navbar />
+
+                <main className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-10">
+                    <div className="flex flex-col lg:flex-row gap-8">
+
+                        {/* Left Column: Summary & Payment */}
+                        <div className="flex-grow space-y-8">
+                            <div className="bg-card rounded-xl p-8 border border-border">
+                                <div className="flex items-center justify-between mb-8">
+                                    <h2 className="text-2xl font-bold text-foreground">Secure Checkout</h2>
+                                </div>
+
+                                {/* Event Mini Card */}
+                                <div className="flex gap-6 p-4 bg-background-elevated rounded-xl border border-border mb-8">
+                                    {(event.landscapeImage || event.portraitImage) && (
+                                        <img src={event.landscapeImage || event.portraitImage} alt={event.name} className="w-24 h-32 object-cover rounded shadow-md" />
+                                    )}
+                                    <div className="flex flex-col justify-center">
+                                        <h3 className="text-xl font-bold text-foreground mb-2">{event.name}</h3>
+                                        <div className="space-y-1 text-muted-foreground text-sm">
+                                            <div className="flex items-center">
+                                                <Calendar className="w-4 h-4 mr-2 text-primary" />
+                                                {(event.startDateTime || event.startDate) && new Date(event.startDateTime || event.startDate).toLocaleDateString(undefined, {
+                                                    weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit"
+                                                })}
+                                            </div>
+                                            <div className="flex items-center text-primary font-medium">
+                                                <MapPin className="w-4 h-4 mr-2" />
+                                                {venue?.name || "Venue"}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Seats Selection */}
+                                <div className="mb-8">
+                                    <h3 className="font-bold text-foreground mb-4">Your Selection</h3>
+                                    <div className="space-y-3">
+                                        {heldSeats.map((seat) => (
+                                            <div key={getSafeId(seat._id) || seat.row + seat.seatNumber} className="flex justify-between items-center p-4 rounded border border-border hover:border-primary transition-colors bg-background-elevated">
+                                                <div className="flex items-center">
+                                                    <div className="w-10 h-10 bg-primary/20 text-primary rounded flex items-center justify-center mr-4">
+                                                        <Ticket className="w-5 h-5" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-bold text-foreground">
+                                                            {getSectionName(venue, seat.sectionId) && `${getSectionName(venue, seat.sectionId)} - `}
+                                                            Row {seat.row}, Seat {seat.seatNumber}
+                                                        </p>
+                                                        <p className="text-xs text-primary uppercase tracking-wider">{seat.zoneName || "Standard"}</p>
+                                                    </div>
+                                                </div>
+                                                <span className="font-bold text-primary">
+                                                    {event.currency || "R"} {(Number(seat.price) || 0).toFixed(2)}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Payment Method Interface */}
+                                <div className="space-y-4">
+                                    <h3 className="font-bold text-foreground mb-2">Payment Method</h3>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <div className="p-4 rounded border-2 border-primary bg-primary/10 flex flex-col justify-between h-32">
+                                            <div className="flex justify-between items-start">
+                                                <CreditCard className="w-8 h-8 text-primary" />
+                                                <CheckCircle2 className="w-6 h-6 text-primary" />
+                                            </div>
+                                            <p className="font-bold text-foreground">Card Payment</p>
+                                        </div>
+                                        <div className="p-4 rounded border-2 border-border bg-card flex flex-col justify-between h-32 opacity-50">
+                                            <div className="flex justify-between items-start">
+                                                <div className="text-2xl font-black text-muted-foreground italic">PayFast</div>
+                                            </div>
+                                            <p className="font-bold text-muted-foreground">Electronic Funds</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-center text-muted-foreground text-sm gap-4">
+                                <div className="flex items-center"><ShieldCheck className="w-4 h-4 mr-1" /> Secure Encryption</div>
+                                <div className="flex items-center"><AlertCircle className="w-4 h-4 mr-1" /> No Hidden Fees</div>
+                            </div>
+                        </div>
+
+                        {/* Right Column: Order Summary Card */}
+                        <div className="lg:w-96">
+                            <div className="bg-card-elevated text-foreground rounded-xl p-8 sticky top-10 border border-primary/20">
+                                <h3 className="text-xl font-bold mb-8 text-foreground">Order Summary</h3>
+
+                                <div className="space-y-4 mb-8">
+                                    <div className="flex justify-between text-muted-foreground">
+                                        <span>Subtotal ({heldSeats.length} seats)</span>
+                                        <span className="text-foreground">{event.currency || "R"} {subtotal.toFixed(2)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-muted-foreground">
+                                        <span>Booking Fee (15%)</span>
+                                        <span className="text-foreground">{event.currency || "R"} {tax.toFixed(2)}</span>
+                                    </div>
+                                    <div className="h-px bg-border my-6"></div>
+                                    <div className="flex justify-between items-end">
+                                        <div>
+                                            <p className="text-muted-foreground text-sm">Total Amount</p>
+                                            <p className="text-3xl font-black text-primary">{event.currency || "R"} {total.toFixed(2)}</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <button
+                                        onClick={handleConfirmPurchase}
+                                        disabled={processing}
+                                        className="w-full py-4 bg-primary hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed rounded font-bold text-primary-foreground text-lg transition-all flex items-center justify-center space-x-2"
+                                    >
+                                        {processing ? (
+                                            <Loader2 className="w-6 h-6 animate-spin" />
+                                        ) : (
+                                            <>
+                                                <span>Complete Purchase</span>
+                                                <ChevronRight className="w-5 h-5" />
+                                            </>
+                                        )}
+                                    </button>
+                                    <p className="text-center text-xs text-muted-foreground px-4">
+                                        By clicking complete purchase, you agree to our Terms of Service.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </main>
+                <Footer />
+            </div>
+        </RoleGuard>
+    );
+}
+
+export default function CheckoutPage() {
+    return (
+        <RoleGuard allowedRoles={["CUSTOMER"]}>
+            <Suspense fallback={
+                <div className="min-h-screen flex items-center justify-center bg-background">
+                    <div className="relative">
+                        <Loader2 className="w-16 h-16 text-primary animate-spin" />
+                        <div className="absolute inset-0 blur-xl bg-primary/20 animate-pulse"></div>
+                    </div>
+                </div>
+            }>
+                <CheckoutContent />
+            </Suspense>
+        </RoleGuard >
+    );
+}
