@@ -126,10 +126,26 @@ export default function MyTicketsPage() {
                         } catch (e) { }
                     }
 
+                    // Fetch seat details for each ticket
+                    const ticketsWithSeats = await Promise.all(tickets.map(async (ticket) => {
+                        const sid = getSafeId(ticket.seatId);
+                        let seatDetails = null;
+                        if (sid) {
+                            try {
+                                const sRes = await fetch(`${base}/seats/${sid}`, {
+                                    headers: { 'Authorization': `Bearer ${token}` }
+                                });
+                                if (sRes.ok) seatDetails = await sRes.json();
+                            } catch (e) { }
+                        }
+                        return { ...ticket, seatDetails };
+                    }));
+
                     return {
                         ...order,
                         eventDetails,
-                        tickets,
+                        venueDetails: eventsMap.get(eid)?.venueId && typeof eventsMap.get(eid).venueId === 'object' ? eventsMap.get(eid).venueId : null,
+                        tickets: ticketsWithSeats,
                         venueName,
                         ticketCount: tickets.length
                     };
@@ -187,12 +203,18 @@ export default function MyTicketsPage() {
             doc.text(eventName, 105, 25, { align: "center" });
 
             // Status Badge
+            const isEventCompleted = order.eventDetails?.endDateTime ? new Date(order.eventDetails.endDateTime) < new Date() : false;
+            let orderDisplayStatus = order.status || "VALID";
+            if (isEventCompleted && orderDisplayStatus === "VALID") {
+                orderDisplayStatus = "EXPIRED";
+            }
+
             doc.setFillColor(16, 185, 129);
             doc.roundedRect(150, 10, 45, 8, 2, 2, "F");
             doc.setFontSize(10);
             doc.setFont(undefined, "bold");
             doc.setTextColor(255, 255, 255);
-            doc.text(order.status || "VALID", 172.5, 15, { align: "center" });
+            doc.text(orderDisplayStatus, 172.5, 15, { align: "center" });
 
             // QR Code
             doc.setTextColor(212, 175, 55);
@@ -205,17 +227,65 @@ export default function MyTicketsPage() {
             doc.setFontSize(10);
             doc.setFont(undefined, "normal");
             doc.setTextColor(150, 150, 150);
-            doc.text(`📅 ${eventDate}`, 65, 65);
-            doc.text(`📍 ${venueName}`, 65, 72);
-            doc.text(`🔢 Order ID: ${order.orderCode || orderId}`, 65, 79);
+            doc.text(`Date: ${eventDate}`, 65, 65);
+            doc.text(`Venue: ${venueName}`, 65, 72);
+            doc.text(`Order ID: ${order.orderCode || orderId}`, 65, 79);
 
-            // Tickets List
+            // Invoice / Payment Details
             doc.setTextColor(212, 175, 55);
             doc.setFontSize(12);
             doc.setFont(undefined, "bold");
-            doc.text("Ticket Information", 15, 105);
+            doc.text("Order Summary & Payment", 15, 105);
 
             let yPos = 115;
+            doc.setFillColor(26, 26, 26);
+            doc.roundedRect(15, yPos, 180, 50, 3, 3, "F");
+
+            doc.setFontSize(10);
+            doc.setTextColor(200, 200, 200);
+            doc.setFont(undefined, "normal");
+
+            const subtotal = order.totalAmount || 0;
+            const discount = order.discountAmount || 0;
+            const tax = order.tax || 0;
+            const wallet = order.walletAmountUsed || 0;
+            const final = order.finalAmount || 0;
+            const currency = order.currency || "ZAR";
+
+            doc.text("Subtotal:", 25, yPos + 10);
+            doc.text(`${currency} ${subtotal.toFixed(2)}`, 185, yPos + 10, { align: "right" });
+
+            if (discount > 0) {
+                doc.text("Discount:", 25, yPos + 17);
+                doc.setTextColor(239, 68, 68);
+                doc.text(`- ${currency} ${discount.toFixed(2)}`, 185, yPos + 17, { align: "right" });
+                doc.setTextColor(200, 200, 200);
+            }
+
+            doc.text("Tax:", 25, yPos + 24);
+            doc.text(`${currency} ${tax.toFixed(2)}`, 185, yPos + 24, { align: "right" });
+
+            if (wallet > 0) {
+                doc.text("Wallet Amount Used:", 25, yPos + 31);
+                doc.text(`${currency} ${wallet.toFixed(2)}`, 185, yPos + 31, { align: "right" });
+            }
+
+            doc.setDrawColor(50, 50, 50);
+            doc.line(25, yPos + 35, 185, yPos + 35);
+
+            doc.setFontSize(12);
+            doc.setFont(undefined, "bold");
+            doc.setTextColor(212, 175, 55);
+            doc.text("Total Paid:", 25, yPos + 43);
+            doc.text(`${currency} ${final.toFixed(2)}`, 185, yPos + 43, { align: "right" });
+
+            yPos += 65;
+
+            // Tickets List
+            doc.setFontSize(12);
+            doc.setFont(undefined, "bold");
+            doc.text("Ticket Information", 15, yPos);
+            yPos += 10;
             (order.tickets || []).forEach((ticket, index) => {
                 if (yPos > 250) {
                     doc.addPage();
@@ -229,10 +299,17 @@ export default function MyTicketsPage() {
                 doc.setTextColor(212, 175, 55);
 
                 const zone = ticket.zoneName || "General";
+                const sectionName = order.venueDetails?.sections?.find(
+                    s => getSafeId(s.id) === getSafeId(ticket.seatDetails?.sectionId)
+                )?.name || "N/A";
                 const row = ticket.seatDetails?.row || "N/A";
                 const seat = ticket.seatDetails?.seatNumber || "N/A";
 
-                doc.text(`Ticket ${index + 1}: ${zone} - Row ${row}, Seat ${seat}`, 25, yPos + 12);
+                doc.text(`Ticket ${index + 1}: ${zone} - Sec ${sectionName}`, 25, yPos + 7);
+                doc.setFontSize(10);
+                doc.setFont(undefined, "normal");
+                doc.text(`Row ${row}, Seat ${seat}`, 25, yPos + 14);
+
                 yPos += 25;
             });
 
@@ -266,9 +343,9 @@ export default function MyTicketsPage() {
             doc.setFontSize(9);
             doc.setFont(undefined, 'normal');
             doc.text('📌 Important Information:', 15, yPos);
-            doc.text('• Please arrive at least 30 minutes before the event starts', 20, yPos + 7);
-            doc.text('• This order includes ' + (order.ticketCount || 0) + ' tickets', 20, yPos + 13);
-            doc.text('• Present the QR code or order code at the entrance for all attendees', 20, yPos + 19);
+            doc.text('- Please arrive at least 30 minutes before the event starts', 20, yPos + 7);
+            doc.text('- This order includes ' + (order.ticketCount || 0) + ' tickets', 20, yPos + 13);
+            doc.text('- Present the QR code or order code at the entrance for all attendees', 20, yPos + 19);
 
             doc.setDrawColor(50, 50, 50);
             doc.line(15, yPos + 35, 195, yPos + 35);
@@ -387,11 +464,15 @@ export default function MyTicketsPage() {
                                                 <div className="absolute inset-0 bg-gradient-to-t from-background via-background/20 to-transparent"></div>
 
                                                 <div className="absolute top-4 left-4 flex flex-col gap-2">
-                                                    <span className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest backdrop-blur-md border ${order.status === 'COMPLETED' || order.status === 'VALID'
-                                                        ? 'bg-accent/20 border-accent/40 text-accent-foreground'
-                                                        : 'bg-card/60 text-muted-foreground border-primary/20'
+                                                    <span className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest backdrop-blur-md border ${isCompleted
+                                                        ? (order.status === 'USED' ? 'bg-secondary/20 border-secondary/40 text-secondary-foreground' : 'bg-card/60 text-muted-foreground border-primary/20')
+                                                        : (order.status === 'COMPLETED' || order.status === 'VALID'
+                                                            ? 'bg-accent/20 border-accent/40 text-accent-foreground'
+                                                            : 'bg-card/60 text-muted-foreground border-primary/20')
                                                         }`}>
-                                                        {order.status || 'VALID'}
+                                                        {isCompleted
+                                                            ? (order.status === 'USED' ? 'USED' : (order.status === 'VALID' ? 'EXPIRED' : order.status))
+                                                            : (order.status || 'VALID')}
                                                     </span>
                                                     {/* {isCompleted && (
                                                         <span className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-muted/40 border border-primary/20 text-muted-foreground backdrop-blur-md">
@@ -466,6 +547,16 @@ export default function MyTicketsPage() {
                                                                 <p className={`font-bold ${isCompleted ? "text-muted-foreground" : "text-foreground"}`}>
                                                                     {order.ticketCount} Ticket{order.ticketCount !== 1 ? 's' : ''} • ID: {order.orderCode || orderId.slice(-8).toUpperCase()}
                                                                 </p>
+                                                                <div className="flex flex-wrap gap-2 mt-1">
+                                                                    {order.tickets?.slice(0, 3).map((t, i) => (
+                                                                        <span key={i} className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-md font-bold">
+                                                                            {t.zoneName} - {order.venueDetails?.sections?.find(s => getSafeId(s.id) === getSafeId(t.seatDetails?.sectionId))?.name || 'N/A'} (R:{t.seatDetails?.row || 'N/A'} S:{t.seatDetails?.seatNumber || 'N/A'})
+                                                                        </span>
+                                                                    ))}
+                                                                    {(order.tickets?.length || 0) > 3 && (
+                                                                        <span className="text-[10px] text-muted-foreground">+{order.tickets.length - 3} more</span>
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -474,8 +565,7 @@ export default function MyTicketsPage() {
                                                 <div className="flex items-center gap-3 mt-2">
                                                     <button
                                                         onClick={() => handleDownloadPDF(order)}
-                                                        disabled={downloading[orderId] || isCompleted}
-                                                        className={`flex-grow flex items-center justify-center px-6 py-4 rounded-xl font-black transition-all shadow-lg active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed group/btn uppercase tracking-wider
+                                                        className={`hover:cursor-pointer flex-grow flex items-center justify-center px-6 py-4 rounded-xl font-black transition-all shadow-lg active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed group/btn uppercase tracking-wider
                                                         ${isCompleted
                                                                 ? 'bg-muted/30 text-muted-foreground shadow-none border-2 border-primary/10'
                                                                 : 'bg-gradient-to-r from-primary to-primary-dark text-primary-foreground hover:from-primary-light hover:to-primary shadow-primary/20 border-2 border-primary'}`}
@@ -488,19 +578,18 @@ export default function MyTicketsPage() {
                                                         ) : (
                                                             <>
                                                                 <Download className="w-5 h-5 mr-2 group-hover/btn:-translate-y-0.5 transition-transform" />
-                                                                <span>{isCompleted ? 'Event Completed' : 'Download Tickets'}</span>
+                                                                <span>{isCompleted ? 'Download Receipt' : 'Download Tickets'}</span>
                                                             </>
                                                         )}
                                                     </button>
 
                                                     <button
                                                         onClick={() => router.push(`/customer/orders/${orderId}`)}
-                                                        disabled={isCompleted}
-                                                        className={`w-14 h-14 rounded-xl flex items-center justify-center border-2 transition-colors ${isCompleted ? 'bg-muted/30 border-primary/10 cursor-not-allowed' : 'bg-card-elevated border-primary/30 hover:bg-primary/10'
+                                                        className={`w-14 h-14 rounded-xl flex items-center justify-center border-2 transition-colors ${isCompleted ? 'bg-muted/30 border-primary/10 cursor-pointer' : 'bg-card-elevated border-primary/30 hover:bg-primary/10'
                                                             }`}
                                                         title="View Order Details"
                                                     >
-                                                        <ChevronRight className={`w-6 h-6 ${isCompleted ? 'text-muted-foreground cursor-not-allowed' : 'text-primary'}`} />
+                                                        <ChevronRight className={`w-6 h-6 ${isCompleted ? 'text-muted-foreground' : 'text-primary'}`} />
                                                     </button>
                                                 </div>
                                             </div>
