@@ -319,7 +319,7 @@ export default function MyTicketsPage() {
                 const row = ticket.seatDetails?.row || "N/A";
                 const seat = ticket.seatDetails?.seatNumber || "N/A";
 
-                doc.text(`Ticket ${index + 1}: ${zone} - Sec ${sectionName}`, 25, yPos + 7);
+                doc.text(`Ticket ${index + 1}: ${zone} - ${sectionName}`, 25, yPos + 7);
                 doc.setFontSize(10);
                 doc.setFont(undefined, "normal");
                 doc.text(`Row ${row}, Seat ${seat}`, 25, yPos + 14);
