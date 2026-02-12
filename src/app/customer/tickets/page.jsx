@@ -25,6 +25,9 @@ function getSafeId(data) {
     if (data?.$oid) return data.$oid;
     if (data?._id) return typeof data._id === "string" ? data._id : getSafeId(data._id);
     if (data?.id) return typeof data.id === "string" ? data.id : getSafeId(data.id);
+    if (typeof data.toString === "function" && data.toString() !== "[object Object]") {
+        return data.toString();
+    }
     return null;
 }
 
@@ -111,19 +114,23 @@ export default function MyTicketsPage() {
 
                     // Get venue details if event exists
                     let venueName = "Venue TBA";
+                    let venueDetails = null;
                     if (eventDetails?.venueId) {
-                        const vid = getSafeId(eventDetails.venueId);
-                        try {
-                            const vRes = await fetch(`${base}/venue/${vid}`, {
-                                headers: {
-                                    'Authorization': `Bearer ${token}`
+                        if (typeof eventDetails.venueId === 'object' && eventDetails.venueId.sections) {
+                            venueDetails = eventDetails.venueId;
+                            venueName = venueDetails.name;
+                        } else {
+                            const vid = getSafeId(eventDetails.venueId);
+                            try {
+                                const vRes = await fetch(`${base}/venue/${vid}`, {
+                                    headers: { 'Authorization': `Bearer ${token}` }
+                                });
+                                if (vRes.ok) {
+                                    venueDetails = await vRes.json();
+                                    venueName = venueDetails.name;
                                 }
-                            });
-                            if (vRes.ok) {
-                                const vData = await vRes.json();
-                                venueName = vData.name;
-                            }
-                        } catch (e) { }
+                            } catch (e) { }
+                        }
                     }
 
                     // Fetch seat details for each ticket
@@ -144,7 +151,7 @@ export default function MyTicketsPage() {
                     return {
                         ...order,
                         eventDetails,
-                        venueDetails: eventsMap.get(eid)?.venueId && typeof eventsMap.get(eid).venueId === 'object' ? eventsMap.get(eid).venueId : null,
+                        venueDetails,
                         tickets: ticketsWithSeats,
                         venueName,
                         ticketCount: tickets.length
@@ -299,9 +306,16 @@ export default function MyTicketsPage() {
                 doc.setTextColor(212, 175, 55);
 
                 const zone = ticket.zoneName || "General";
-                const sectionName = order.venueDetails?.sections?.find(
-                    s => getSafeId(s.id) === getSafeId(ticket.seatDetails?.sectionId)
-                )?.name || "N/A";
+
+                // Robust section matching
+                const targetSid = getSafeId(ticket.seatDetails?.sectionId || ticket.seatDetails?.zoneId || ticket.sectionId || ticket.zoneId);
+                const section = order.venueDetails?.sections?.find(s =>
+                    getSafeId(s.id) === targetSid ||
+                    getSafeId(s._id) === targetSid ||
+                    getSafeId(s.sectionId) === targetSid
+                );
+                const sectionName = section?.name || "N/A";
+
                 const row = ticket.seatDetails?.row || "N/A";
                 const seat = ticket.seatDetails?.seatNumber || "N/A";
 
@@ -550,7 +564,17 @@ export default function MyTicketsPage() {
                                                                 <div className="flex flex-wrap gap-2 mt-1">
                                                                     {order.tickets?.slice(0, 3).map((t, i) => (
                                                                         <span key={i} className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-md font-bold">
-                                                                            {t.zoneName} - {order.venueDetails?.sections?.find(s => getSafeId(s.id) === getSafeId(t.seatDetails?.sectionId))?.name || 'N/A'} (R:{t.seatDetails?.row || 'N/A'} S:{t.seatDetails?.seatNumber || 'N/A'})
+                                                                            {t.zoneName} - {
+                                                                                (() => {
+                                                                                    const targetSid = getSafeId(t.seatDetails?.sectionId || t.seatDetails?.zoneId || t.sectionId || t.zoneId);
+                                                                                    const section = order.venueDetails?.sections?.find(s =>
+                                                                                        getSafeId(s.id) === targetSid ||
+                                                                                        getSafeId(s._id) === targetSid ||
+                                                                                        getSafeId(s.sectionId) === targetSid
+                                                                                    );
+                                                                                    return section?.name || "N/A";
+                                                                                })()
+                                                                            } (R:{t.seatDetails?.row || 'N/A'} S:{t.seatDetails?.seatNumber || 'N/A'})
                                                                         </span>
                                                                     ))}
                                                                     {(order.tickets?.length || 0) > 3 && (

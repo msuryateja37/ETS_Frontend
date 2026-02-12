@@ -28,6 +28,9 @@ function getSafeId(data) {
     if (data?.$oid) return data.$oid;
     if (data?._id) return typeof data._id === "string" ? data._id : getSafeId(data._id);
     if (data?.id) return typeof data.id === "string" ? data.id : getSafeId(data.id);
+    if (typeof data.toString === "function" && data.toString() !== "[object Object]") {
+        return data.toString();
+    }
     return null;
 }
 
@@ -257,9 +260,16 @@ export default function OrderDetailsPage() {
                 doc.setTextColor(212, 175, 55);
 
                 const zone = ticket.zoneName || "General";
-                const sectionName = orderData.venueDetails?.sections?.find(
-                    s => getSafeId(s.id) === getSafeId(ticket.seatDetails?.sectionId)
-                )?.name || "N/A";
+
+                // Robust section matching
+                const targetSid = getSafeId(ticket.seatDetails?.sectionId || ticket.seatDetails?.zoneId || ticket.sectionId || ticket.zoneId);
+                const section = orderData.venueDetails?.sections?.find(s =>
+                    getSafeId(s.id) === targetSid ||
+                    getSafeId(s._id) === targetSid ||
+                    getSafeId(s.sectionId) === targetSid
+                );
+                const sectionName = section?.name || "N/A";
+
                 const row = ticket.seatDetails?.row || "N/A";
                 const seat = ticket.seatDetails?.seatNumber || "N/A";
 
@@ -479,9 +489,15 @@ export default function OrderDetailsPage() {
                                                     <div>
                                                         <p className="font-black text-lg">
                                                             {ticket.zoneName || "General Section"} - {
-                                                                orderData.venueDetails?.sections?.find(
-                                                                    s => getSafeId(s.id) === getSafeId(ticket.seatDetails?.sectionId)
-                                                                )?.name || "N/A"
+                                                                (() => {
+                                                                    const targetSid = getSafeId(ticket.seatDetails?.sectionId || ticket.seatDetails?.zoneId || ticket.sectionId || ticket.zoneId);
+                                                                    const section = orderData.venueDetails?.sections?.find(s =>
+                                                                        getSafeId(s.id) === targetSid ||
+                                                                        getSafeId(s._id) === targetSid ||
+                                                                        getSafeId(s.sectionId) === targetSid
+                                                                    );
+                                                                    return section?.name || "N/A";
+                                                                })()
                                                             }
                                                         </p>
                                                         <p className="text-muted-foreground text-sm flex items-center gap-2">
