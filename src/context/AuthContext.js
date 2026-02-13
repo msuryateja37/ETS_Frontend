@@ -174,6 +174,61 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const updateUser = (updatedUser) => {
+    setUser(updatedUser);
+    const storage = localStorage.getItem("user") ? localStorage : sessionStorage;
+    storage.setItem("user", JSON.stringify(updatedUser));
+  };
+
+  const requestContactUpdate = async (newContact, type) => {
+    try {
+      if (!user?._id) throw new Error("User not authenticated");
+      const res = await fetch(`${API_BASE}/user/${user._id}/request-contact-update`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ newContact, type }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Request failed");
+      }
+      return { success: true };
+    } catch (error) {
+      console.error("Request Contact Update Error:", error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  const verifyContactUpdate = async (otp, newContact, type) => {
+    try {
+      if (!user?._id) throw new Error("User not authenticated");
+      const res = await fetch(`${API_BASE}/user/${user._id}/verify-contact-update`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ otp, newContact, type }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Verification failed");
+      }
+
+      const updatedUser = await res.json();
+      updateUser(updatedUser);
+      return { success: true, user: updatedUser };
+    } catch (error) {
+      console.error("Verify Contact Update Error:", error);
+      return { success: false, error: error.message };
+    }
+  };
+
   const logout = () => {
     setUser(null);
     setToken(null);
@@ -185,7 +240,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, token, loading, login, signup, logout, requestOtp, verifyOtp, forgotPassword, resetPassword }}
+      value={{user,token,loading,login,signup,logout,requestOtp,verifyOtp,forgotPassword,resetPassword,updateUser,requestContactUpdate,verifyContactUpdate}}
     >
       {children}
     </AuthContext.Provider>
