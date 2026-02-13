@@ -48,9 +48,10 @@ export default function ContactUsPage() {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
+    const normalizedValue = name === "email" ? value.toLowerCase() : value;
     setFormData(prev => ({
       ...prev,
-      [name]: value
+      [name]: normalizedValue
     }));
   };
 
@@ -266,7 +267,7 @@ export default function ContactUsPage() {
           </div>
         </div>
       </div>
-      <Footer/>
+      <Footer />
     </RoleGuard>
   );
 }

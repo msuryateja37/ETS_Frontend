@@ -265,6 +265,29 @@ export default function UserManagementPage() {
     }
   };
 
+  const handleDeleteUser = async (userId) => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/user/${userId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.message || 'Failed to delete user');
+      }
+
+      // Refresh users list
+      await fetchUsers();
+      return { success: true };
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      return { success: false, error: error.message };
+    }
+  };
+
   // Pagination calculations
   const indexOfLastUser = currentPage * usersPerPage;
   const indexOfFirstUser = indexOfLastUser - usersPerPage;
@@ -400,7 +423,7 @@ export default function UserManagementPage() {
                     type="text"
                     placeholder="Search by name, email, month, or year..."
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={(e) => setSearchQuery(e.target.value.toLowerCase())}
                     className="w-full pl-12 pr-12 py-4 bg-background-elevated border-2 border-border rounded-xl focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-medium text-foreground placeholder:text-muted-foreground"
                   />
                   {searchQuery && (
@@ -471,13 +494,13 @@ export default function UserManagementPage() {
             </div>
           )}
 
-          {/* Users Table Container */}
+
           <div className="bg-card rounded-2xl border border-border overflow-hidden mb-8 shadow-lg">
             <UserTable
               users={currentUsers}
               onRoleUpdate={handleRoleUpdate}
               onPermissionsUpdate={handlePermissionsUpdate}
-              onRefresh={fetchUsers}
+              onDeleteUser={handleDeleteUser}
             />
           </div>
 
