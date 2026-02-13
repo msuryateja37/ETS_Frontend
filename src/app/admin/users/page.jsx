@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
-import { ArrowLeft, Search, Filter, Users as UsersIcon, Shield, ChevronLeft, ChevronRight, Activity, UserPlus, X, Crown, Sparkles } from "lucide-react";
+import { ArrowLeft, Search, Filter, Users as UsersIcon, Shield, ChevronLeft, ChevronRight, Activity, UserPlus, X, Crown, Sparkles, ChevronDown } from "lucide-react";
 import UserTable from "../../components/UserTable";
 import RoleGuard from "../../components/RoleGuard";
 import Navbar from "../../components/Navbar";
@@ -11,13 +11,14 @@ import Footer from "@/app/components/Footer";
 
 export default function UserManagementPage() {
   const router = useRouter();
-  const { user: authUser, token } = useAuth();
+  const { user: authUser, token, loading: authLoading } = useAuth();
   const [users, setUsers] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("ALL");
+  const [sortBy, setSortBy] = useState("date-desc");
   const [currentUser, setCurrentUser] = useState(null);
 
   // Pagination state
@@ -36,17 +37,20 @@ export default function UserManagementPage() {
 
   useEffect(() => {
     // Get current logged-in user
-    const userData = localStorage.getItem("user");
+    const userData = localStorage.getItem("user") || sessionStorage.getItem("user");
     if (userData) {
       setCurrentUser(JSON.parse(userData));
     }
-    fetchUsers();
-  }, []);
+
+    if (!authLoading && token) {
+      fetchUsers();
+    }
+  }, [authLoading, token]);
 
   useEffect(() => {
     filterUsers();
     setCurrentPage(1); // Reset to first page when filters change
-  }, [searchQuery, roleFilter, users]);
+  }, [searchQuery, roleFilter, sortBy, users]);
 
   const fetchUsers = async () => {
     try {
@@ -93,15 +97,48 @@ export default function UserManagementPage() {
       filtered = filtered.filter(user => user.role === roleFilter);
     }
 
-    // Apply search filter
+    // Apply search filter (including month/date)
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(user =>
-        user.name?.toLowerCase().includes(query) ||
-        user.email?.toLowerCase().includes(query) ||
-        user._id?.toLowerCase().includes(query)
-      );
+      const monthNames = ["january", "february", "march", "april", "may", "june",
+        "july", "august", "september", "october", "november", "december"];
+      const shortMonths = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+
+      filtered = filtered.filter(user => {
+        const createDate = new Date(user.createdAt);
+        const createMonth = monthNames[createDate.getMonth()];
+        const createShortMonth = shortMonths[createDate.getMonth()];
+        const createDay = createDate.getDate().toString();
+        const createYear = createDate.getFullYear().toString();
+
+        return (
+          user.name?.toLowerCase().includes(query) ||
+          user.email?.toLowerCase().includes(query) ||
+          user._id?.toLowerCase().includes(query) ||
+          createMonth.includes(query) ||
+          createShortMonth.includes(query) ||
+          createDay === query ||
+          createYear === query
+        );
+      });
     }
+
+    // Apply sorting
+    filtered.sort((a, b) => {
+      switch (sortBy) {
+        case 'date-desc':
+          return new Date(b.createdAt) - new Date(a.createdAt);
+        case 'date-asc':
+          return new Date(a.createdAt) - new Date(b.createdAt);
+        case 'name-asc':
+          return (a.name || '').localeCompare(b.name || '');
+        case 'name-desc':
+          return (b.name || '').localeCompare(a.name || '');
+        default:
+          return 0;
+      }
+    });
+
     setFilteredUsers(filtered);
   };
 
@@ -236,7 +273,12 @@ export default function UserManagementPage() {
 
   const handlePageChange = (pageNumber) => {
     setCurrentPage(pageNumber);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const tableHeader = document.getElementById('user-table-header');
+    if (tableHeader) {
+      tableHeader.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   const handlePreviousPage = () => {
@@ -311,7 +353,7 @@ export default function UserManagementPage() {
               <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
                 <div className="space-y-4">
                   <div>
-                    <h1 className="text-4xl md:text-5xl font-black text-foreground tracking-tight mb-2 flex flex-wrap items-center gap-4">
+                    <h1 id="user-table-header" className="text-4xl md:text-5xl font-black text-foreground tracking-tight mb-2 flex flex-wrap items-center gap-4">
                       User Management
                       <span className="px-4 py-1.5 bg-primary/10 text-primary rounded-full text-base font-bold border border-primary/20">
                         {users.length} Total
@@ -336,12 +378,12 @@ export default function UserManagementPage() {
 
           {/* Elegant Stats Grid */}
           <div className="grid grid-cols-2 lg:grid-cols-6 gap-4 mb-10">
+            <MiniStat label="Active" count={users.filter(u => u.isActive).length} color="accent" icon={<Activity className="w-3 h-3" />} />
             <MiniStat label="Customers" count={users.filter(u => u.role === 'CUSTOMER').length} color="primary" />
             <MiniStat label="Admins" count={users.filter(u => u.role === 'ADMIN').length} color="primary" />
             <MiniStat label="Ticketing" count={users.filter(u => u.role === 'TICKETING').length} color="accent" />
             <MiniStat label="Gate Staff" count={users.filter(u => u.role === 'GATE').length} color="accent" />
             <MiniStat label="Management" count={users.filter(u => u.role === 'MANAGEMENT').length} color="primary" />
-            <MiniStat label="Active" count={users.filter(u => u.isActive).length} color="accent" icon={<Activity className="w-3 h-3" />} />
           </div>
 
           {/* Filters & Search */}
@@ -349,23 +391,56 @@ export default function UserManagementPage() {
             {/* Subtle gradient overlay */}
             <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent pointer-events-none"></div>
 
-            <div className="relative z-10 flex flex-col lg:flex-row gap-6">
-              {/* Search */}
-              <div className="flex-1 relative group">
-                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5 group-focus-within:text-primary transition-colors" />
-                <input
-                  type="text"
-                  placeholder="Search by name, email, or ID..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-12 pr-12 py-4 bg-background-elevated border-2 border-border rounded-xl focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-medium text-foreground placeholder:text-muted-foreground"
-                />
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery("")}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 p-1.5 hover:bg-primary/10 rounded-lg transition-colors"
+            <div className="relative z-10 space-y-6">
+              <div className="flex flex-col lg:flex-row gap-6">
+                {/* Search */}
+                <div className="flex-1 relative group">
+                  <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5 group-focus-within:text-primary transition-colors" />
+                  <input
+                    type="text"
+                    placeholder="Search by name, email, month, or year..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-12 pr-12 py-4 bg-background-elevated border-2 border-border rounded-xl focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-medium text-foreground placeholder:text-muted-foreground"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 p-1.5 hover:bg-primary/10 rounded-lg transition-colors"
+                    >
+                      <X className="w-4 h-4 text-muted-foreground" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Sort Dropdown */}
+                <div className="relative min-w-[200px]">
+                  <Filter className="absolute left-4 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5" />
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                    className="w-full pl-12 pr-10 py-4 bg-background-elevated border-2 border-border rounded-xl focus:outline-none focus:border-primary transition-all font-bold text-foreground appearance-none cursor-pointer text-sm"
                   >
-                    <X className="w-4 h-4 text-muted-foreground" />
+                    <option value="date-desc">Newest First</option>
+                    <option value="date-asc">Oldest First</option>
+                    <option value="name-asc">Name (A-Z)</option>
+                    <option value="name-desc">Name (Z-A)</option>
+                  </select>
+                  <ChevronDown className="absolute right-4 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5 pointer-events-none" />
+                </div>
+
+                {/* Clear Filters */}
+                {(searchQuery || roleFilter !== "ALL" || sortBy !== "date-desc") && (
+                  <button
+                    onClick={() => {
+                      setSearchQuery("");
+                      setRoleFilter("ALL");
+                      setSortBy("date-desc");
+                    }}
+                    className="px-6 py-4 bg-primary/10 text-primary border-2 border-primary/20 rounded-xl font-bold hover:bg-primary hover:text-white transition-all flex items-center gap-2"
+                  >
+                    <X className="w-4 h-4" />
+                    Clear All
                   </button>
                 )}
               </div>
