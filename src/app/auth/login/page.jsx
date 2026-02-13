@@ -31,7 +31,8 @@ export default function AuthLoginPage() {
   }, [user, loading, router]);
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const value = e.target.name === "email" ? e.target.value.toLowerCase() : e.target.value;
+    setFormData({ ...formData, [e.target.name]: value });
   };
 
   const validateForm = () => {
@@ -190,20 +191,20 @@ export default function AuthLoginPage() {
             </h1>
 
             <div className="h-1 w-24 bg-gradient-to-r from-primary to-primary-dark mx-auto rounded-full shadow-md shadow-primary/50"></div>
-              <p className="text-lg text-muted-foreground font-medium leading-relaxed px-4">
-                Experience the pinnacle of event entertainment. Secure your place at the most exclusive venues.
-              </p>
-            </div>
+            <p className="text-lg text-muted-foreground font-medium leading-relaxed px-4">
+              Experience the pinnacle of event entertainment. Secure your place at the most exclusive venues.
+            </p>
+          </div>
 
-            {/* Features */}
-            <div className="pt-8 grid grid-cols-2 gap-8">
-              <div className="space-y-2">
-                <div className="text-sm text-muted-foreground uppercase tracking-widest font-bold border-r border-primary/20 pr-2">Premium Seats</div>
-              </div>
-              <div className="space-y-2">
-                <div className="text-sm text-muted-foreground uppercase tracking-widest font-bold">Exclusive Events</div>
-              </div>
+          {/* Features */}
+          <div className="pt-8 grid grid-cols-2 gap-8">
+            <div className="space-y-2">
+              <div className="text-sm text-muted-foreground uppercase tracking-widest font-bold border-r border-primary/20 pr-2">Premium Seats</div>
             </div>
+            <div className="space-y-2">
+              <div className="text-sm text-muted-foreground uppercase tracking-widest font-bold">Exclusive Events</div>
+            </div>
+          </div>
         </div>
       </div>
 

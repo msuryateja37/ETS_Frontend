@@ -162,7 +162,12 @@ function TicketSalesContent() {
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Email Address</label>
-                                    <input type="email" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="customer@example.com" />
+                                    <input
+                                        type="email"
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                                        placeholder="customer@example.com"
+                                        onChange={(e) => e.target.value = e.target.value.toLowerCase()}
+                                    />
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Phone Number</label>

@@ -7,6 +7,7 @@ import { Plus, Edit2, Trash2, MapPin, Calendar as CalendarIcon, Users, Crown, Sp
 import RoleGuard from "../../components/RoleGuard";
 import Navbar from "../../components/Navbar";
 import Footer from "@/app/components/Footer";
+import DeleteConfirmationDialog from "../../components/DeleteConfirmationDialog";
 
 export default function AdminEventsPage() {
     const [events, setEvents] = useState([]);
@@ -18,6 +19,11 @@ export default function AdminEventsPage() {
     const [sortBy, setSortBy] = useState('default');
     const { token, loading: authLoading } = useAuth();
     const router = useRouter();
+
+    // Delete confirmation state
+    const [selectedEvent, setSelectedEvent] = useState(null);
+    const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1);
@@ -180,60 +186,68 @@ export default function AdminEventsPage() {
         router.push(`/admin/events/${id}`);
     };
 
-    const handleDelete = async (id, eventName) => {
-        if (!confirm(`Are you sure you want to delete "${eventName}"? This action cannot be undone.`)) {
-            return;
-        }
+    const handleOpenDeleteDialog = (event) => {
+        setSelectedEvent(event);
+        setShowDeleteDialog(true);
+    };
 
+    const handleConfirmDelete = async () => {
+        if (!selectedEvent) return;
+
+        setIsDeleting(true);
         try {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events/${id}`, {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events/${selectedEvent._id}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
 
             if (response.ok) {
-                setEvents(events.filter(event => event._id !== id));
+                setEvents(events.filter(event => event._id !== selectedEvent._id));
+                setShowDeleteDialog(false);
+                setSelectedEvent(null);
             } else {
                 alert('Failed to delete event');
             }
         } catch (error) {
             console.error('Error deleting event:', error);
             alert('An error occurred while deleting the event');
+        } finally {
+            setIsDeleting(false);
         }
     };
 
     const getStatusBadge = (status) => {
         const statusConfig = {
             DRAFT: {
-                bg: 'bg-muted/50',
+                bg: 'bg-muted/80',
                 text: 'text-muted-foreground',
                 border: 'border-muted/30',
                 label: 'Draft',
                 icon: '📝'
             },
             PUBLISHED: {
-                bg: 'bg-accent/10',
+                bg: 'bg-background/80',
                 text: 'text-accent',
                 border: 'border-accent/20',
                 label: 'Published',
                 icon: '✓'
             },
             SOLD_OUT: {
-                bg: 'bg-destructive/10',
+                bg: 'bg-background/80',
                 text: 'text-destructive',
                 border: 'border-destructive/20',
                 label: 'Sold Out',
                 icon: '🔥'
             },
             CANCELLED: {
-                bg: 'bg-destructive/10',
+                bg: 'bg-background/80',
                 text: 'text-destructive',
                 border: 'border-destructive/20',
                 label: 'Cancelled',
                 icon: '✕'
             },
             COMPLETED: {
-                bg: 'bg-primary/10',
+                bg: 'bg-background/80',
                 text: 'text-primary',
                 border: 'border-primary/20',
                 label: 'Completed',
@@ -375,7 +389,7 @@ export default function AdminEventsPage() {
                                         <option value="SPORTS">Sports</option>
                                         <option value="THEATER">Theater</option>
                                         <option value="COMEDY">Comedy</option>
-                                        <option value="WORKSHOP">Workshop</option>
+                                        <option value="CASINO">Casino</option>
                                         <option value="OTHER">Other</option>
                                     </select>
                                     <ChevronDown className="absolute right-4 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5 pointer-events-none" />
@@ -483,94 +497,87 @@ export default function AdminEventsPage() {
                                 {currentEvents.map((event, index) => (
                                     <div
                                         key={`${event._id}-${index}`}
-                                        className="group bg-card rounded-2xl border border-border overflow-hidden hover:border-primary/40 transition-all flex flex-col relative shadow-sm hover:shadow-xl hover:-translate-y-1 duration-300"
+                                        className="group bg-card/40 backdrop-blur-xl rounded-3xl border border-border/30 overflow-hidden hover:border-primary/50 transition-all duration-500 flex flex-col relative shadow-2xl hover:shadow-primary/10 hover:-translate-y-2"
                                     >
-                                        {/* Image Section */}
-                                        {event.portraitImage || event.landscapeImage || event.image || event.posterURL ? (
-                                            <div className="relative h-56 overflow-hidden bg-background-elevated">
+                                        {/* Image Section with Glassy Overlay */}
+                                        <div className="relative h-64 overflow-hidden">
+                                            {event.portraitImage || event.landscapeImage || event.image || event.posterURL ? (
                                                 <img
                                                     src={event.landscapeImage || event.image || event.posterURL}
                                                     alt={event.name}
-                                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                                                 />
-                                                {/* Gradient overlay */}
-                                                <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-background/20 to-transparent"></div>
+                                            ) : (
+                                                <div className="w-full h-full bg-gradient-to-br from-primary/20 via-background-elevated to-background flex items-center justify-center text-8xl">
+                                                    {getCategoryIcon(event.category)}
+                                                </div>
+                                            )}
 
-                                                {/* Status badge overlay */}
-                                                <div className="absolute top-4 right-4">
-                                                    {getStatusBadge(event.status)}
+                                            {/* Gradient & Glass Overlay */}
+                                            <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent opacity-80"></div>
+
+                                            {/* Status Badge - Floating Style */}
+                                            <div className="absolute top-6 right-6 transform group-hover:scale-110 transition-transform duration-300">
+                                                {getStatusBadge(event.status)}
+                                            </div>
+
+                                            {/* Quick Info Overlay */}
+                                            <div className="absolute bottom-6 left-6 right-6 flex items-center justify-between text-white/90">
+                                                <div className="flex items-center gap-2 px-3 py-1.5 bg-black/40 backdrop-blur-md rounded-full border border-white/10 text-xs font-bold">
+                                                    <CalendarIcon className="w-3.5 h-3.5 text-primary" />
+                                                    {new Date(event.startDateTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                                </div>
+                                                <div className="flex items-center gap-2 px-3 py-1.5 bg-black/40 backdrop-blur-md rounded-full border border-white/10 text-xs font-bold">
+                                                    <MapPin className="w-3.5 h-3.5 text-primary" />
+                                                    {event.venueId?.name + ', ' + event.venueId?.city || 'TBD'}
                                                 </div>
                                             </div>
-                                        ) : (
-                                            <div className="h-56 bg-gradient-to-br from-primary/10 via-background-elevated to-background-elevated flex items-center justify-center text-7xl border-b border-border relative">
-                                                {getCategoryIcon(event.category)}
-                                                <div className="absolute top-4 right-4">
-                                                    {getStatusBadge(event.status)}
-                                                </div>
-                                            </div>
-                                        )}
+                                        </div>
 
-                                        {/* Content Section */}
-                                        <div className="p-6 flex-1 flex flex-col">
-                                            <h2 className="text-xl font-bold text-foreground mb-3 line-clamp-2 group-hover:text-primary transition-colors">
+                                        {/* Content Section - Premium Spacing */}
+                                        <div className="p-8 flex-1 flex flex-col relative">
+                                            {/* Category Tag */}
+                                            <div className="text-[10px] font-black text-primary uppercase tracking-[0.2em] mb-3">
+                                                {event.category || 'General'}
+                                            </div>
+
+                                            <h2 className="text-2xl font-black text-foreground mb-4 line-clamp-1 group-hover:text-primary transition-colors duration-300">
                                                 {event.name}
                                             </h2>
 
-                                            <p className="text-muted-foreground text-sm mb-4 line-clamp-2 flex-1">
-                                                {event.description || 'No description provided'}
+                                            <p className="text-muted-foreground text-sm mb-8 line-clamp-2 leading-relaxed flex-1">
+                                                {event.description || 'Join us for an unforgettable experience at our world-class venue.'}
                                             </p>
 
-                                            {/* Event Details */}
-                                            <div className="space-y-3 mb-6">
-                                                <div className="flex items-center gap-3 text-sm">
-                                                    <div className="p-1.5 bg-primary/10 rounded-lg">
-                                                        <MapPin className="w-4 h-4 text-primary" />
-                                                    </div>
-                                                    <span className="text-muted-foreground truncate flex-1">
-                                                        {event.venueId?.name || 'Venue TBD'}
-                                                        {event.venueId?.city && ` • ${event.venueId.city}`}
-                                                    </span>
+                                            {/* Action Row - Zones, Edit, Delete Side by Side */}
+                                            <div className="flex items-center gap-3 mt-auto">
+                                                {/* Zones Count */}
+                                                <div className="flex-1 flex flex-col items-center justify-center p-3 bg-primary/5 rounded-2xl border border-primary/10 min-h-[64px]">
+                                                    <p className="text-sm font-bold text-muted-foreground uppercase tracking-tight mb-0.5">Zones</p>
+                                                    <p className="text-base font-black text-foreground leading-none">{event.zones?.length || 0}</p>
                                                 </div>
-                                                <div className="flex items-center gap-3 text-sm">
-                                                    <div className="p-1.5 bg-primary/10 rounded-lg">
-                                                        <CalendarIcon className="w-4 h-4 text-primary" />
-                                                    </div>
-                                                    <span className="text-muted-foreground truncate flex-1">
-                                                        {formatDate(event.startDateTime)}
-                                                    </span>
-                                                </div>
-                                                {event.zones && event.zones.length > 0 && (
-                                                    <div className="flex items-center gap-3 text-sm">
-                                                        <div className="p-1.5 bg-primary/10 rounded-lg">
-                                                            <UsersIcon className="w-4 h-4 text-primary" />
-                                                        </div>
-                                                        <span className="text-muted-foreground">
-                                                            {event.zones.length} zone{event.zones.length !== 1 ? 's' : ''} configured
-                                                        </span>
-                                                    </div>
-                                                )}
-                                            </div>
 
-                                            {/* Action Buttons */}
-                                            <div className="flex gap-3 mt-auto pt-4 border-t border-border-light">
+                                                {/* Edit Button */}
                                                 <button
                                                     onClick={() => handleEdit(event._id)}
-                                                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-primary/10 hover:bg-primary text-primary hover:text-primary-foreground rounded-xl font-semibold transition-all border border-primary/20"
+                                                    className="flex-[2] flex items-center justify-center gap-2 px-4 py-4 bg-primary hover:bg-primary-dark text-primary-foreground rounded-2xl font-black transition-all shadow-lg hover:shadow-primary/20 group/btn min-h-[64px]"
                                                 >
-                                                    <Edit2 className="w-4 h-4" />
+                                                    <Edit2 className="w-4 h-4 group-hover/btn:rotate-12 transition-transform" />
                                                     Edit
                                                 </button>
+
+                                                {/* Delete Button */}
                                                 <button
-                                                    onClick={() => handleDelete(event._id, event.name)}
-                                                    className="flex items-center justify-center px-4 py-3 bg-destructive/10 hover:bg-destructive text-destructive hover:text-destructive-foreground rounded-xl font-semibold transition-all border border-destructive/20"
+                                                    onClick={() => handleOpenDeleteDialog(event)}
+                                                    className="flex-1 flex items-center justify-center bg-card-elevated hover:bg-destructive text-muted-foreground hover:text-white rounded-2xl border border-border/50 hover:border-destructive transition-all duration-300 min-h-[64px]"
                                                 >
-                                                    <Trash2 className="w-4 h-4" />
+                                                    <Trash2 className="w-5 h-5" />
                                                 </button>
                                             </div>
                                         </div>
 
-                                        {/* Hover effect border */}
-                                        <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-primary/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
+                                        {/* Luxury Corner Accent */}
+                                        <div className="absolute -bottom-2 -right-2 w-12 h-12 bg-primary/5 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
                                     </div>
                                 ))}
                             </div>
@@ -631,6 +638,16 @@ export default function AdminEventsPage() {
                 </div>
                 <Footer />
             </div>
+            {/* Delete Confirmation Dialog */}
+            <DeleteConfirmationDialog
+                isOpen={showDeleteDialog}
+                onClose={() => { setShowDeleteDialog(false); setSelectedEvent(null); }}
+                onConfirm={handleConfirmDelete}
+                title="Cancel & Remove Event"
+                message="Are you sure you want to remove this event from the Event Go? This will cancel all associated bookings and cannot be undone."
+                itemName={selectedEvent?.name}
+                loading={isDeleting}
+            />
         </RoleGuard>
     );
 }

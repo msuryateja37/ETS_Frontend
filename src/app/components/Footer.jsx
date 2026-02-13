@@ -158,6 +158,7 @@ export default function Footer() {
                                     type="email"
                                     placeholder="Your email"
                                     className="flex-1 px-4 py-2 bg-card border border-border-light rounded-lg text-foreground placeholder-muted-foreground text-sm focus:outline-none focus:border-muted focus:bg-background-hover transition-all backdrop-blur-sm"
+                                    onChange={(e) => e.target.value = e.target.value.toLowerCase()}
                                 />
                                 <button className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-bold hover:bg-primary-dark transition-all hover:scale-105">
                                     Subscribe
