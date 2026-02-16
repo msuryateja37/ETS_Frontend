@@ -525,7 +525,7 @@ export default function EventDetailsPage() {
                     disabled={isOver}
                     className={`w-full py-4 font-black rounded-xl shadow-lg transition-all transform flex items-center justify-center gap-3 uppercase tracking-wider text-sm border-2 ${isOver
                       ? 'bg-muted text-muted-foreground border-muted cursor-not-allowed opacity-70'
-                      : 'bg-gradient-to-r from-primary to-primary-dark hover:from-primary-light hover:to-primary text-primary-foreground border-primary hover:scale-[1.02] active:scale-[0.98] shadow-primary/30'
+                      : 'bg-gradient-to-r from-primary to-primary-dark hover:from-primary-light hover:to-primary text-primary-foreground border-primary hover:scale-[1.02] active:scale-[0.98] shadow-primary/30 hover:cursor-pointer'
                       }`}
                   >
                     <Ticket className="w-5 h-5" />

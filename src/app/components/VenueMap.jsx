@@ -144,16 +144,30 @@ export default function VenueMap({
     const { offsetWidth: cWidth, offsetHeight: cHeight } = containerRef.current;
 
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+    // Include seats in bounding box
     seatsWithPosition.forEach(s => {
       minX = Math.min(minX, s.position.x); minY = Math.min(minY, s.position.y);
       maxX = Math.max(maxX, s.position.x); maxY = Math.max(maxY, s.position.y);
     });
+
+    // Include sections in bounding box
     (venue?.sections || []).forEach(section => {
       (section.boundary || []).forEach(p => {
         minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
         maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
       });
     });
+
+    // Include stage in bounding box (400x80 rect centered at stagePosition)
+    if (venue.stagePosition) {
+      const stageX = venue.stagePosition.x;
+      const stageY = venue.stagePosition.y;
+      minX = Math.min(minX, stageX - 200);
+      maxX = Math.max(maxX, stageX + 200);
+      minY = Math.min(minY, stageY - 40);
+      maxY = Math.max(maxY, stageY + 40);
+    }
 
     if (minX === Infinity) return;
 
@@ -162,25 +176,29 @@ export default function VenueMap({
     const centerX = (minX + maxX) / 2;
     const centerY = (minY + maxY) / 2;
 
-    const scaleX = cWidth / (contentWidth + 100);
-    const scaleY = cHeight / (contentHeight + 100);
+    // Use responsive padding (10% of viewport or at least 40px)
+    const padding = Math.max(40, Math.min(cWidth, cHeight) * 0.1);
+    const scaleX = (cWidth - padding * 2) / contentWidth;
+    const scaleY = (cHeight - padding * 2) / contentHeight;
     let k = Math.min(scaleX, scaleY, 1);
 
-    if (k < 0.6) k = 0.4;
+    // Ensure we don't zoom in TOO much for tiny venues, but allow zooming out as much as needed
+    k = Math.max(0.05, Math.min(1, k));
 
     setTransform({
       x: cWidth / 2 - centerX * k,
       y: cHeight / 2 - centerY * k,
       k: k
     });
-  }, [seatsWithPosition, venue?.sections]);
+  }, [seatsWithPosition, venue?.sections, venue?.stagePosition]);
 
   useEffect(() => {
-    if (!isInitialized && seatsWithPosition.length > 0) {
+    const hasData = seatsWithPosition.length > 0 || (venue?.sections || []).length > 0;
+    if (!isInitialized && hasData) {
       fitToView();
       setIsInitialized(true);
     }
-  }, [seatsWithPosition, isInitialized, fitToView]);
+  }, [seatsWithPosition, venue?.sections, isInitialized, fitToView]);
 
   // Panning
   const handleMouseDown = (e) => {
@@ -309,8 +327,8 @@ export default function VenueMap({
                 return (
                   <div key={zoneName} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100 hover:border-blue-200 hover:bg-white transition-all cursor-help group">
                     <div className="flex items-center space-x-3 min-w-0">
-                      <div 
-                        className="w-3 h-3 rounded-full flex-shrink-0" 
+                      <div
+                        className="w-3 h-3 rounded-full flex-shrink-0"
                         style={{ backgroundColor: zoneColor }}
                       />
                       <span className="text-xs font-bold text-gray-600 truncate group-hover:text-gray-900 uppercase">{zoneName}</span>
@@ -390,7 +408,7 @@ export default function VenueMap({
                     const sId = getStrId(sec.id ?? sec.sectionId);
                     const color = sectionColorsByZone.get(sId) || '#CBD5E1';
                     const zoneData = sectionToZoneMap.get(sId);
-                    
+
                     return (
                       <g key={sId ?? idx} className="hover:opacity-100 transition-opacity opacity-80">
                         <path
@@ -423,7 +441,7 @@ export default function VenueMap({
                   {seatsWithPosition.map((seat) => {
                     const isS = selectedSeatIds.has(getStrId(seat._id));
                     const sId = getStrId(seat.sectionId ?? seat.zoneId);
-                    
+
                     // Get zone data from seat's enriched data or from mapping
                     let zoneColor = '#4B5563'; // Default gray
                     if (seat.zoneName && zoneColorMap.has(seat.zoneName)) {
@@ -531,12 +549,12 @@ export default function VenueMap({
                   {/* Zone Info */}
                   {(() => {
                     const sId = getStrId(hoveredSeat.sectionId ?? hoveredSeat.zoneId);
-                    
+
                     // Try to get zone info from seat's enriched data first
                     let zoneName = hoveredSeat.zoneName;
                     let zonePrice = hoveredSeat.price;
                     let zoneColor = null;
-                    
+
                     // If not in seat data, get from mapping
                     if (!zoneName) {
                       const zoneData = sectionToZoneMap.get(sId);
@@ -545,18 +563,18 @@ export default function VenueMap({
                         zonePrice = zoneData.price;
                       }
                     }
-                    
+
                     if (zoneName) {
                       zoneColor = zoneColorMap.get(zoneName);
                     }
-                    
+
                     if (zoneName && typeof zonePrice === 'number') {
                       return (
                         <div className="flex items-center justify-between pb-2 border-b border-gray-100">
                           <div className="flex items-center space-x-2">
                             {zoneColor && (
-                              <div 
-                                className="w-2.5 h-2.5 rounded-full" 
+                              <div
+                                className="w-2.5 h-2.5 rounded-full"
                                 style={{ backgroundColor: zoneColor }}
                               />
                             )}
@@ -569,7 +587,7 @@ export default function VenueMap({
                       );
                     }
                   })()}
-                  
+
                   {/* Section Info */}
                   <div>
                     <div className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-1">
@@ -582,11 +600,10 @@ export default function VenueMap({
                   <div className="flex items-center justify-between pt-2 border-t border-gray-100">
                     <span className="text-[10px] font-bold text-gray-400 uppercase">Status</span>
                     <div className="flex items-center space-x-2">
-                      <div className={`w-2 h-2 rounded-full ${
-                        hoveredSeat.status === 'AVAILABLE' ? 'bg-green-500' :
+                      <div className={`w-2 h-2 rounded-full ${hoveredSeat.status === 'AVAILABLE' ? 'bg-green-500' :
                         hoveredSeat.status === 'LOCKED' ? 'bg-orange-500' :
-                        hoveredSeat.status === 'SOLD' ? 'bg-gray-400' : 'bg-red-500'
-                      }`} />
+                          hoveredSeat.status === 'SOLD' ? 'bg-gray-400' : 'bg-red-500'
+                        }`} />
                       <span className="text-xs font-black text-gray-900 uppercase">{hoveredSeat.status}</span>
                     </div>
                   </div>
