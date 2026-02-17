@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Heart, Calendar, MapPin, Ticket, HeartOff, ArrowLeft, ChevronRight, Sparkles, Crown } from "lucide-react";
 import Navbar from "@/app/components/Navbar";
+import { formatDate } from "@/app/utils/dateUtils";
 import RoleGuard from "@/app/components/RoleGuard";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
@@ -18,6 +19,7 @@ export default function LikesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [unlikingInProgress, setUnlikingInProgress] = useState(new Set());
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     if (user && token) {
@@ -173,14 +175,17 @@ export default function LikesPage() {
     router.push(`/events/${eventId}`);
   };
 
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
-  };
+
+  const filteredEvents = likedEvents.filter(event => {
+    const searchLower = searchQuery.toLowerCase();
+    const dateStr = formatDate(event.startDateTime || event.startDate).toLowerCase();
+    return (
+      event.name?.toLowerCase().includes(searchLower) ||
+      event.category?.toLowerCase().includes(searchLower) ||
+      event.venue?.name?.toLowerCase().includes(searchLower) ||
+      dateStr.includes(searchLower)
+    );
+  });
 
   if (isLoading) {
     return (
@@ -215,7 +220,11 @@ export default function LikesPage() {
   return (
     <RoleGuard allowedRoles={["CUSTOMER"]}>
       <div className="min-h-screen bg-background pb-20">
-        <Navbar />
+        <Navbar
+          showSearch={true}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+        />
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           {/* Header Section */}
@@ -239,9 +248,11 @@ export default function LikesPage() {
                   My Liked Events
                 </h1>
                 <p className="text-muted-foreground font-medium mt-2 tracking-wide">
-                  {likedEvents.length === 0
-                    ? "You haven't liked any events yet"
-                    : `You have saved ${likedEvents.length} event${likedEvents.length !== 1 ? 's' : ''}`
+                  {filteredEvents.length === 0 && searchQuery
+                    ? "No events match your search"
+                    : likedEvents.length === 0
+                      ? "You haven't liked any events yet"
+                      : `You have saved ${likedEvents.length} event${likedEvents.length !== 1 ? 's' : ''}`
                   }
                 </p>
               </div>
@@ -267,10 +278,29 @@ export default function LikesPage() {
                 Discover Events
               </button>
             </div>
+          ) : filteredEvents.length === 0 ? (
+            /* No Search Results */
+            <div className="w-full py-20 text-center bg-gradient-to-br from-card to-background rounded-3xl border-2 border-primary/20 shadow-xl">
+              <div className="w-28 h-28 bg-gradient-to-br from-primary/20 to-background rounded-full flex items-center justify-center mx-auto mb-8 border-2 border-primary/30">
+                <HeartOff className="w-12 h-12 text-primary/40" />
+              </div>
+              <h3 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary to-primary-light mb-3 uppercase tracking-wide">
+                No Match Found
+              </h3>
+              <p className="text-muted-foreground max-w-sm mx-auto mb-10 text-sm leading-relaxed">
+                We couldn't find any events matching "{searchQuery}". Try a different search term.
+              </p>
+              <button
+                onClick={() => setSearchQuery("")}
+                className="px-8 py-4 bg-gradient-to-r from-primary to-primary-dark text-primary-foreground rounded-xl hover:from-primary-light hover:to-primary transition-all shadow-lg shadow-primary/30 font-black uppercase tracking-wider"
+              >
+                Clear Search
+              </button>
+            </div>
           ) : (
             /* Events Grid */
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {likedEvents.map((event) => (
+              {filteredEvents.map((event) => (
                 <div
                   key={event._id}
                   onClick={() => handleEventClick(event._id)}

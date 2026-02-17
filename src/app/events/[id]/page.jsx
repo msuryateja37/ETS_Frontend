@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/app/components/Navbar";
+import { formatDate, formatTime } from "@/app/utils/dateUtils";
 import { formatLikes } from "../../utils/formatLikes";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -183,17 +184,6 @@ export default function EventDetailsPage() {
     }
   };
 
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
-    });
-  };
-
-  const formatTime = (dateString) => {
-    return new Date(dateString).toLocaleTimeString('en-US', {
-      hour: 'numeric', minute: '2-digit', hour12: true
-    });
-  };
 
   const getMapUrl = (venueData) => {
     if (!venueData) return '';

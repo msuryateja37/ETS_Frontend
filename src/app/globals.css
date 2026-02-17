@@ -9,7 +9,7 @@
   --color-border-light: hsl(var(--border-light));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
-  
+
   --color-background: hsl(var(--background));
   --color-background-elevated: hsl(var(--background-elevated));
   --color-background-hover: hsl(var(--background-hover));
@@ -153,35 +153,35 @@
     --background-elevated: 0 0% 5%;
     --background-hover: 0 0% 13%;
     --foreground: 45 100% 95%;
-    
+
     --card: 0 0% 10%;
     --card-elevated: 0 0% 8%;
     --card-foreground: 45 100% 95%;
-    
+
     --primary: 45 93% 47%;
     --primary-dark: 38 92% 50%;
     --primary-light: 48 96% 89%;
     --primary-foreground: 0 0% 0%;
-    
+
     --secondary: 0 0% 20%;
     --secondary-foreground: 45 100% 95%;
-    
+
     --muted: 0 0% 15%;
     --muted-dark: 0 0% 10%;
     --muted-foreground: 45 40% 70%;
-    
+
     --accent: 142 76% 36%;
     --accent-dark: 142 71% 45%;
     --accent-foreground: 0 0% 100%;
-    
+
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
-    
+
     --border: 45 93% 47% / 0.2;
     --border-light: 0 0% 100% / 0.1;
     --input: 45 93% 47% / 0.3;
     --ring: 45 93% 47%;
-    
+
     --popover: 0 0% 10%;
     --popover-foreground: 45 100% 95%;
   }
@@ -223,6 +223,29 @@
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+@utility scrollbar-custom {
+  &::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: hsl(var(--primary) / 0.3);
+    border-radius: 10px;
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--primary) / 0.6);
+  }
+
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--primary) / 0.3) transparent;
+}
+
 @utility line-clamp-1 {
   display: -webkit-box;
   -webkit-line-clamp: 1;
@@ -244,7 +267,9 @@
       hsl(var(--card)) 40%,
       hsl(var(--card)) 100%);
   background-size: 1000px 100%;
-}@import "tailwindcss";
+}
+
+@import "tailwindcss";
 
 @theme {
   /* Screens and Container */
@@ -255,7 +280,7 @@
   --color-border-light: hsl(var(--border-light));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
-  
+
   --color-background: hsl(var(--background));
   --color-background-elevated: hsl(var(--background-elevated));
   --color-background-hover: hsl(var(--background-hover));
@@ -399,35 +424,35 @@
     --background-elevated: 0 0% 5%;
     --background-hover: 0 0% 13%;
     --foreground: 45 100% 95%;
-    
+
     --card: 0 0% 10%;
     --card-elevated: 0 0% 8%;
     --card-foreground: 45 100% 95%;
-    
+
     --primary: 45 93% 47%;
     --primary-dark: 38 92% 50%;
     --primary-light: 48 96% 89%;
     --primary-foreground: 0 0% 0%;
-    
+
     --secondary: 0 0% 20%;
     --secondary-foreground: 45 100% 95%;
-    
+
     --muted: 0 0% 15%;
     --muted-dark: 0 0% 10%;
     --muted-foreground: 45 40% 70%;
-    
+
     --accent: 142 76% 36%;
     --accent-dark: 142 71% 45%;
     --accent-foreground: 0 0% 100%;
-    
+
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
-    
+
     --border: 45 93% 47% / 0.2;
     --border-light: 0 0% 100% / 0.1;
     --input: 45 93% 47% / 0.3;
     --ring: 45 93% 47%;
-    
+
     --popover: 0 0% 10%;
     --popover-foreground: 45 100% 95%;
   }

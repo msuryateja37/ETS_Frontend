@@ -33,7 +33,7 @@ export default function Navbar({ showSearch = false, searchQuery, setSearchQuery
   const customerNavItems = [
     { icon: Home, label: "Home", path: "/" },
     { icon: Ticket, label: "My Tickets", path: "/customer/tickets" },
-    { icon: Heart, label: "Likes", path: "/customer/likes"},
+    { icon: Heart, label: "Likes", path: "/customer/likes" },
     { icon: Star, label: "Favorites", path: "/customer/favorites" },
     { icon: Calendar, label: "Past Events", path: "/customer/past-events" },
     { icon: MessageCircle, label: "Contact Us", path: "/customer/contactus" },
@@ -133,7 +133,7 @@ export default function Navbar({ showSearch = false, searchQuery, setSearchQuery
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && onSearch && onSearch()}
-                  placeholder="Search events..."
+                  placeholder={pathname.includes('tickets') ? "Search orders, seats, events..." : "Search events..."}
                   className="w-64 pl-10 pr-4 py-2 bg-card hover:bg-background-hover focus:bg-background-hover border border-primary/20 focus:border-primary rounded-full text-sm text-foreground placeholder-muted-foreground focus:outline-none transition-all duration-300"
                 />
               </div>
