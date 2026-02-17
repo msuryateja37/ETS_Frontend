@@ -16,6 +16,7 @@ import {
 import { useRouter } from "next/navigation";
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
+import { formatDate } from "@/app/utils/dateUtils";
 import Footer from "@/app/components/Footer";
 import RoleGuard from "@/app/components/RoleGuard";
 
@@ -39,6 +40,7 @@ export default function MyTicketsPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [downloading, setDownloading] = useState({});
+    const [searchQuery, setSearchQuery] = useState("");
 
     useEffect(() => {
         if (!user || !token) {
@@ -191,7 +193,7 @@ export default function MyTicketsPage() {
             const doc = new jsPDF();
             const eventName = order.eventDetails?.name || "Event Order";
             const eventDate = (order.eventDetails?.startDateTime || order.eventDetails?.startDate)
-                ? new Date(order.eventDetails.startDateTime || order.eventDetails.startDate).toLocaleDateString(undefined, {
+                ? formatDate(order.eventDetails.startDateTime || order.eventDetails.startDate, {
                     weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit"
                 })
                 : "Date TBA";
@@ -379,6 +381,53 @@ export default function MyTicketsPage() {
         }
     };
 
+    const filteredOrders = orders.filter(order => {
+        const searchLower = searchQuery.toLowerCase();
+
+        // 1. Search in Event details
+        const eventMatch = (
+            order.eventDetails?.name?.toLowerCase().includes(searchLower) ||
+            order.eventDetails?.category?.toLowerCase().includes(searchLower) ||
+            order.venueName?.toLowerCase().includes(searchLower) ||
+            (order.eventDetails?.startDateTime ? formatDate(order.eventDetails.startDateTime, {
+                month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit"
+            }).toLowerCase().includes(searchLower) : false)
+        );
+
+        // 2. Search in Order details
+        const orderMatch = (
+            order.orderCode?.toLowerCase().includes(searchLower) ||
+            getSafeId(order)?.toLowerCase().includes(searchLower)
+        );
+
+        // 3. Search in Ticket/Seat details
+        const ticketMatch = (order.tickets || []).some(t => {
+            const row = (t.seatDetails?.row || "N/A").toLowerCase();
+            const seatNumber = (t.seatDetails?.seatNumber || "N/A").toLowerCase();
+            const zone = (t.zoneName || "General").toLowerCase();
+
+            // Robust section matching
+            const targetSid = getSafeId(t.seatDetails?.sectionId || t.seatDetails?.zoneId || t.sectionId || t.zoneId);
+            const section = order.venueDetails?.sections?.find(s =>
+                getSafeId(s.id) === targetSid ||
+                getSafeId(s._id) === targetSid ||
+                getSafeId(s.sectionId) === targetSid
+            );
+            const sectionName = (section?.name || "N/A").toLowerCase();
+
+            return (
+                zone.includes(searchLower) ||
+                sectionName.includes(searchLower) ||
+                row.includes(searchLower) ||
+                seatNumber.includes(searchLower) ||
+                `row ${row}`.includes(searchLower) ||
+                `seat ${seatNumber}`.includes(searchLower)
+            );
+        });
+
+        return eventMatch || orderMatch || ticketMatch;
+    });
+
     if (loading) return (
         <RoleGuard allowedRoles={["CUSTOMER"]}>
             <div className="min-h-screen bg-background flex items-center justify-center">
@@ -393,7 +442,11 @@ export default function MyTicketsPage() {
     return (
         <RoleGuard allowedRoles={["CUSTOMER"]}>
             <div className="min-h-screen bg-background">
-                <Navbar />
+                <Navbar
+                    showSearch={true}
+                    searchQuery={searchQuery}
+                    setSearchQuery={setSearchQuery}
+                />
 
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
                     {/* Header Section */}
@@ -418,7 +471,10 @@ export default function MyTicketsPage() {
                                         My Tickets
                                     </h1>
                                     <p className="text-muted-foreground font-medium mt-2 tracking-wide">
-                                        You have {orders.length} total bookings across {new Set(orders.map((o) => getSafeId(o.eventId))).size} events
+                                        {filteredOrders.length === 0 && searchQuery
+                                            ? "No bookings match your search"
+                                            : `You have ${orders.length} total bookings across ${new Set(orders.map((o) => getSafeId(o.eventId))).size} events`
+                                        }
                                     </p>
                                 </div>
                             </div>
@@ -446,9 +502,27 @@ export default function MyTicketsPage() {
                                     It looks like you haven't booked any events yet. Once you do, your orders will appear right here!
                                 </p>
                             </div>
+                        ) : filteredOrders.length === 0 ? (
+                            <div className="w-full py-20 text-center bg-gradient-to-br from-card to-background rounded-3xl border-2 border-primary/20 shadow-xl">
+                                <div className="w-28 h-28 bg-gradient-to-br from-primary/20 to-background rounded-full flex items-center justify-center mx-auto mb-8 border-2 border-primary/30">
+                                    <TicketIcon className="w-12 h-12 text-primary/40" />
+                                </div>
+                                <h2 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary to-primary-light mb-3 uppercase tracking-wide">
+                                    No Matching Bookings
+                                </h2>
+                                <p className="text-muted-foreground max-w-sm mx-auto mb-10 text-sm leading-relaxed">
+                                    We couldn't find any orders, events, or seats matching "{searchQuery}".
+                                </p>
+                                <button
+                                    onClick={() => setSearchQuery("")}
+                                    className="px-8 py-3 bg-primary text-primary-foreground rounded-xl font-bold hover:bg-primary-light transition-all shadow-lg shadow-primary/30 uppercase tracking-wider"
+                                >
+                                    Clear Search
+                                </button>
+                            </div>
                         ) : (
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                {orders.map((order) => {
+                                {filteredOrders.map((order) => {
                                     const eventDate = order.eventDetails?.endDateTime ?? order.eventDetails?.startDateTime ?? order.eventDetails?.startDate;
                                     const isCompleted = eventDate ? new Date(eventDate) < new Date() : false;
                                     const orderId = getSafeId(order);
@@ -479,10 +553,10 @@ export default function MyTicketsPage() {
 
                                                 <div className="absolute top-4 left-4 flex flex-col gap-2">
                                                     <span className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest backdrop-blur-md border ${isCompleted
-                                                        ? (order.status === 'USED' ? 'bg-secondary/20 border-secondary/40 text-secondary-foreground' : 'bg-card/60 text-muted-foreground border-primary/20')
+                                                        ? (order.status === 'USED' ? 'bg-background/50 border-secondary/40 text-secondary-foreground' : 'bg-card/60 text-muted-foreground border-primary/20')
                                                         : (order.status === 'COMPLETED' || order.status === 'VALID'
-                                                            ? 'bg-accent/20 border-accent/40 text-accent-foreground'
-                                                            : 'bg-card/60 text-muted-foreground border-primary/20')
+                                                            ? 'bg-background/50 border-accent/40 text-accent-foreground'
+                                                            : 'bg-background/50 text-muted-foreground border-primary/20')
                                                         }`}>
                                                         {isCompleted
                                                             ? (order.status === 'USED' ? 'USED' : (order.status === 'VALID' ? 'EXPIRED' : order.status))
@@ -528,7 +602,7 @@ export default function MyTicketsPage() {
                                                                 <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Date & Time</p>
                                                                 <p className={`font-bold ${isCompleted ? "text-muted-foreground" : "text-foreground"}`}>
                                                                     {(order.eventDetails?.startDateTime || order.eventDetails?.startDate)
-                                                                        ? new Date(order.eventDetails.startDateTime || order.eventDetails.startDate).toLocaleDateString(undefined, {
+                                                                        ? formatDate(order.eventDetails.startDateTime || order.eventDetails.startDate, {
                                                                             month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit"
                                                                         })
                                                                         : "Date TBA"}
@@ -551,7 +625,7 @@ export default function MyTicketsPage() {
                                                         </div>
 
                                                         <div className="flex items-center gap-4 group/item">
-                                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${isCompleted ? 'bg-muted/30' : 'bg-card-elevated group-hover/item:bg-primary/10'
+                                                            <div className={`w-10 h-10 rounded-full shrink-0 flex items-center justify-center transition-colors ${isCompleted ? 'bg-muted/30' : 'bg-card-elevated group-hover/item:bg-primary/10'
                                                                 }`}>
                                                                 <TicketIcon className={`w-5 h-5 transition-colors ${isCompleted ? 'text-muted-foreground' : 'text-primary'
                                                                     }`} />
@@ -561,9 +635,9 @@ export default function MyTicketsPage() {
                                                                 <p className={`font-bold ${isCompleted ? "text-muted-foreground" : "text-foreground"}`}>
                                                                     {order.ticketCount} Ticket{order.ticketCount !== 1 ? 's' : ''} • ID: {order.orderCode || orderId.slice(-8).toUpperCase()}
                                                                 </p>
-                                                                <div className="flex flex-wrap gap-2 mt-1">
-                                                                    {order.tickets?.slice(0, 3).map((t, i) => (
-                                                                        <span key={i} className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-md font-bold">
+                                                                <div className="flex flex-wrap gap-2 mt-1 max-h-[60px] overflow-y-auto scrollbar-custom scroll-smooth">
+                                                                    {order.tickets?.map((t, i) => (
+                                                                        <span key={i} className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-md font-bold whitespace-nowrap">
                                                                             {t.zoneName} - {
                                                                                 (() => {
                                                                                     const targetSid = getSafeId(t.seatDetails?.sectionId || t.seatDetails?.zoneId || t.sectionId || t.zoneId);
@@ -577,9 +651,6 @@ export default function MyTicketsPage() {
                                                                             } (R:{t.seatDetails?.row || 'N/A'} S:{t.seatDetails?.seatNumber || 'N/A'})
                                                                         </span>
                                                                     ))}
-                                                                    {(order.tickets?.length || 0) > 3 && (
-                                                                        <span className="text-[10px] text-muted-foreground">+{order.tickets.length - 3} more</span>
-                                                                    )}
                                                                 </div>
                                                             </div>
                                                         </div>

@@ -2,8 +2,16 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Calendar, MapPin, DollarSign, Users, Image, Info, Phone, Mail, Clock, Save, Plus, X, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Calendar, MapPin, DollarSign, Users, Image, Info, Phone, Mail, Clock, Save, Plus, X, CheckCircle2, AlertCircle, Shield } from 'lucide-react';
 import RoleGuard from "../components/RoleGuard";
+
+const MOCK_GATE_STAFF = [
+    { id: '1', name: 'Sarah Wilson', email: 'sarah.w@example.com', phone: '+1 234 567 8901' },
+    { id: '2', name: 'Mike Johnson', email: 'mike.j@example.com', phone: '+1 234 567 8902' },
+    { id: '3', name: 'Emily Davis', email: 'emily.d@example.com', phone: '+1 234 567 8903' },
+    { id: '4', name: 'Alex Brown', email: 'alex.b@example.com', phone: '+1 234 567 8904' },
+    { id: '5', name: 'Chris Taylor', email: 'chris.t@example.com', phone: '+1 234 567 8905' }
+];
 
 export default function AdminEventForm({ initialData = null, onSubmit }) {
     const { token } = useAuth();
@@ -34,6 +42,11 @@ export default function AdminEventForm({ initialData = null, onSubmit }) {
     const [selectedVenue, setSelectedVenue] = useState(null);
     const [loading, setLoading] = useState(false);
 
+    // Gate Staff State
+    const [selectedStaffIds, setSelectedStaffIds] = useState([]);
+    const [isStaffDropdownOpen, setIsStaffDropdownOpen] = useState(false);
+    const [assignedStaff, setAssignedStaff] = useState([]);
+
     useEffect(() => {
         const fetchVenues = async () => {
             try {
@@ -49,6 +62,25 @@ export default function AdminEventForm({ initialData = null, onSubmit }) {
         fetchVenues();
     }, []);
 
+    /*
+    // TODO: Uncomment and adapt this useEffect when the backend API for gate staff is ready
+    // You will need to replace MOCK_GATE_STAFF with a state variable (e.g., gateStaffList)
+    useEffect(() => {
+        const fetchGateStaff = async () => {
+            try {
+                const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/gate-staff`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                // setGateStaffList(data.staff || []); 
+            } catch (error) {
+                console.error('Error fetching gate staff:', error);
+            }
+        };
+        fetchGateStaff();
+    }, []);
+    */
+
     useEffect(() => {
         if (initialData) {
             setFormData({
@@ -63,6 +95,8 @@ export default function AdminEventForm({ initialData = null, onSubmit }) {
                     timings: ''
                 }
             });
+            // Initialize assigned staff if available in initialData (mocking for now since backend field might not exist yet)
+            setAssignedStaff(initialData.gateStaff || []);
             const venueId = initialData.venueId?._id || initialData.venueId;
             if (venueId && venues.length > 0) {
                 const venue = venues.find(v => v._id === venueId);
@@ -208,6 +242,32 @@ export default function AdminEventForm({ initialData = null, onSubmit }) {
         return true;
     };
 
+    const handleAddStaff = () => {
+        if (selectedStaffIds.length === 0) return;
+
+        const newStaff = MOCK_GATE_STAFF.filter(s => selectedStaffIds.includes(s.id));
+        // Filter out any that might have been added concurrently (though UI prevents this)
+        const uniqueNewStaff = newStaff.filter(s => !assignedStaff.some(assigned => assigned.id === s.id));
+
+        if (uniqueNewStaff.length > 0) {
+            setAssignedStaff([...assignedStaff, ...uniqueNewStaff]);
+            setSelectedStaffIds([]);
+            setIsStaffDropdownOpen(false);
+        }
+    };
+
+    const toggleStaffSelection = (staffId) => {
+        setSelectedStaffIds(prev =>
+            prev.includes(staffId)
+                ? prev.filter(id => id !== staffId)
+                : [...prev, staffId]
+        );
+    };
+
+    const handleRemoveStaff = (staffId) => {
+        setAssignedStaff(assignedStaff.filter(s => s.id !== staffId));
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
 
@@ -217,7 +277,9 @@ export default function AdminEventForm({ initialData = null, onSubmit }) {
         }
 
         setLoading(true);
-        await onSubmit(formData);
+        // Include assignedStaff in the submitted data
+        // Note: Backend might need to be updated to handle this field
+        await onSubmit({ ...formData, gateStaff: assignedStaff });
         setLoading(false);
     };
 
@@ -512,6 +574,133 @@ export default function AdminEventForm({ initialData = null, onSubmit }) {
                                 />
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                {/* Gate Staff Management Card */}
+                <div className="bg-card rounded-2xl border border-border overflow-hidden">
+                    <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-8 py-6 border-b border-border">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-primary/10 rounded-lg">
+                                <Shield className="w-5 h-5 text-primary" />
+                            </div>
+                            <h2 className="text-2xl font-bold text-foreground">Gate Staff Management</h2>
+                        </div>
+                    </div>
+                    <div className="p-8">
+                        <div className="mb-6">
+                            <label className="block text-sm font-semibold text-foreground mb-3">
+                                Add Staff Members
+                            </label>
+                            <div className="flex gap-4 items-start">
+                                <div className="relative flex-grow">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsStaffDropdownOpen(!isStaffDropdownOpen)}
+                                        className="w-full px-4 py-3 rounded-xl border-2 border-border bg-background-elevated focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all outline-none text-foreground text-left flex justify-between items-center"
+                                    >
+                                        <span className={selectedStaffIds.length === 0 ? "text-muted-foreground" : ""}>
+                                            {selectedStaffIds.length === 0
+                                                ? "Select staff members..."
+                                                : `${selectedStaffIds.length} members selected`}
+                                        </span>
+                                        <div className={`transition-transform duration-200 ${isStaffDropdownOpen ? "rotate-180" : ""}`}>
+                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 opacity-50"><path d="m6 9 6 6 6-6" /></svg>
+                                        </div>
+                                    </button>
+
+                                    {isStaffDropdownOpen && (
+                                        <div className="absolute z-10 w-full mt-2 bg-card border border-border rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                            <div className="max-h-60 overflow-y-auto">
+                                                {MOCK_GATE_STAFF.filter(s => !assignedStaff.some(assigned => assigned.id === s.id)).length === 0 ? (
+                                                    <div className="p-4 text-center text-sm text-muted-foreground">
+                                                        No more staff available
+                                                    </div>
+                                                ) : (
+                                                    <div className="p-2 space-y-1">
+                                                        {MOCK_GATE_STAFF.filter(s => !assignedStaff.some(assigned => assigned.id === s.id)).map(staff => (
+                                                            <div
+                                                                key={staff.id}
+                                                                onClick={() => toggleStaffSelection(staff.id)}
+                                                                className="flex items-center gap-3 p-3 rounded-lg hover:bg-primary/5 cursor-pointer transition-colors"
+                                                            >
+                                                                <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${selectedStaffIds.includes(staff.id)
+                                                                    ? "bg-primary border-primary text-primary-foreground"
+                                                                    : "border-muted-foreground/30 bg-background"
+                                                                    }`}>
+                                                                    {selectedStaffIds.includes(staff.id) && <CheckCircle2 className="w-3.5 h-3.5" />}
+                                                                </div>
+                                                                <div>
+                                                                    <div className="font-medium text-sm">{staff.name}</div>
+                                                                    <div className="text-xs text-muted-foreground">{staff.phone}</div>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleAddStaff}
+                                    disabled={selectedStaffIds.length === 0}
+                                    className="px-6 py-3 bg-secondary hover:bg-secondary/80 text-secondary-foreground rounded-xl font-semibold transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                >
+                                    <Plus className="w-4 h-4" />
+                                    Add Selected
+                                </button>
+                            </div>
+                        </div>
+
+                        {assignedStaff.length > 0 ? (
+                            <div className="border border-border rounded-xl overflow-hidden">
+                                <table className="w-full text-left">
+                                    <thead className="bg-background-elevated border-b border-border">
+                                        <tr>
+                                            <th className="px-6 py-4 text-sm font-semibold text-foreground">Name</th>
+                                            <th className="px-6 py-4 text-sm font-semibold text-foreground">Contact</th>
+                                            <th className="px-6 py-4 text-sm font-semibold text-foreground text-right">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border">
+                                        {assignedStaff.map((staff) => (
+                                            <tr key={staff.id} className="hover:bg-background-elevated/50 transition-colors">
+                                                <td className="px-6 py-4">
+                                                    <div className="font-medium text-foreground">{staff.name}</div>
+                                                    <div className="text-xs text-muted-foreground">{staff.email}</div>
+                                                </td>
+                                                <td className="px-6 py-4 text-sm text-foreground">
+                                                    <div className="flex items-center gap-2">
+                                                        <Phone className="w-3 h-3 text-muted-foreground" />
+                                                        {staff.phone}
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleRemoveStaff(staff.id)}
+                                                        className="p-2 text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+                                                        title="Remove staff"
+                                                    >
+                                                        <X className="w-4 h-4" />
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <div className="text-center py-12 border-2 border-dashed border-border rounded-xl">
+                                <div className="mb-4 inline-flex items-center justify-center w-12 h-12 rounded-full bg-muted">
+                                    <Users className="w-6 h-6 text-muted-foreground" />
+                                </div>
+                                <p className="text-sm font-medium text-foreground">No gate staff assigned</p>
+                                <p className="text-xs text-muted-foreground mt-1">Select a staff member above to add them to this event</p>
+                            </div>
+                        )}
                     </div>
                 </div>
 

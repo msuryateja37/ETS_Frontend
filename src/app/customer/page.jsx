@@ -8,6 +8,7 @@ import Navbar from "../components/Navbar";
 import { formatLikes } from "../utils/formatLikes";
 import Footer from "../components/Footer";
 import { useAuth } from "@/context/AuthContext";
+import { formatDate } from "../utils/dateUtils";
 
 export default function CustomerHomePage({ logout }) {
   const { user, token } = useAuth();
@@ -220,10 +221,6 @@ export default function CustomerHomePage({ logout }) {
     }
   };
 
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
 
   const handleEventClick = (eventId) => {
     router.push(`/events/${eventId}`);
@@ -473,7 +470,7 @@ export default function CustomerHomePage({ logout }) {
                             {event.startDateTime && (
                               <div className="flex items-center">
                                 <Calendar className="w-4 h-4 mr-2 text-primary" />
-                                <span>{formatDate(event.startDateTime)}</span>
+                                <span>{formatDate(event.startDateTime, { month: 'short', day: 'numeric', year: undefined })}</span>
                               </div>
                             )}
                             {(event.venueId?.name || event.venue?.name) && (
@@ -690,7 +687,7 @@ const EventCard = memo(({ event, onClick, onLike, isLiked, isLiking, formatDate 
         <div className="space-y-2 mb-4 flex-grow">
           <div className="flex items-center text-sm text-muted-foreground font-medium">
             <Calendar className="w-4 h-4 mr-2 text-primary" />
-            <span>{formatDate(event.startDateTime)}</span>
+            <span>{formatDate(event.startDateTime, { month: 'short', day: 'numeric', year: undefined })}</span>
           </div>
           {(event.venueId?.name || event.venue?.name) && (
             <div className="flex items-center text-sm text-muted-foreground">

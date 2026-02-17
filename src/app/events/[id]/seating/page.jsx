@@ -9,6 +9,7 @@ import { useAuth } from "../../../../context/AuthContext";
 import { ArrowLeft, ShoppingCart, Loader2, MapPin, Calendar, Clock, Ticket, CheckCircle, Crown, Sparkles } from "lucide-react";
 import { io } from "socket.io-client";
 import RoleGuard from "@/app/components/RoleGuard";
+import { formatDate, formatTime } from "@/app/utils/dateUtils";
 
 function getSafeId(data) {
   if (!data) return null;
@@ -258,25 +259,6 @@ export default function EventSeatingPage() {
     }
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return "";
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      weekday: 'short',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
-
-  const formatTime = (dateString) => {
-    if (!dateString) return "";
-    const date = new Date(dateString);
-    return date.toLocaleTimeString("en-US", {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
 
   if (loading) {
     return (

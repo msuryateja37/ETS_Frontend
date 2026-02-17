@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Edit2, Shield, Calendar, CheckCircle, XCircle, Trash2 } from "lucide-react";
 import RoleChangeDialog from "./RoleChange";
 import DeleteConfirmationDialog from "./DeleteConfirmationDialog";
+import { formatDate } from "../utils/dateUtils";
 
 export default function UserTable({ users, onRoleUpdate, onPermissionsUpdate, onDeleteUser }) {
   const [selectedUser, setSelectedUser] = useState(null);
@@ -11,15 +12,6 @@ export default function UserTable({ users, onRoleUpdate, onPermissionsUpdate, on
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
 
   const getRoleBadgeColor = (role) => {
     const colors = {
@@ -174,7 +166,7 @@ export default function UserTable({ users, onRoleUpdate, onPermissionsUpdate, on
                   <td className="px-6 py-2 whitespace-nowrap">
                     <div className="flex items-center text-sm text-gray-500">
                       <Calendar className="w-4 h-4 mr-1" />
-                      {formatDate(user.createdAt)}
+                      {formatDate(user.createdAt, { hour: '2-digit', minute: '2-digit' })}
                     </div>
                   </td>
                   <td className="px-6 py-2">

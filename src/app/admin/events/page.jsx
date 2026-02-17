@@ -8,6 +8,7 @@ import RoleGuard from "../../components/RoleGuard";
 import Navbar from "../../components/Navbar";
 import Footer from "@/app/components/Footer";
 import DeleteConfirmationDialog from "../../components/DeleteConfirmationDialog";
+import { formatDate } from "@/app/utils/dateUtils";
 
 export default function AdminEventsPage() {
     const [events, setEvents] = useState([]);
@@ -274,16 +275,6 @@ export default function AdminEventsPage() {
         return icons[category] || '🎫';
     };
 
-    const formatDate = (dateString) => {
-        const date = new Date(dateString);
-        return date.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-    };
 
     if (loading) {
         return (
@@ -525,7 +516,7 @@ export default function AdminEventsPage() {
                                             <div className="absolute bottom-6 left-6 right-6 flex items-center justify-between text-white/90">
                                                 <div className="flex items-center gap-2 px-3 py-1.5 bg-black/40 backdrop-blur-md rounded-full border border-white/10 text-xs font-bold">
                                                     <CalendarIcon className="w-3.5 h-3.5 text-primary" />
-                                                    {new Date(event.startDateTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                                    {formatDate(event.startDateTime, { month: 'short', day: 'numeric', year: undefined })}
                                                 </div>
                                                 <div className="flex items-center gap-2 px-3 py-1.5 bg-black/40 backdrop-blur-md rounded-full border border-white/10 text-xs font-bold">
                                                     <MapPin className="w-3.5 h-3.5 text-primary" />
