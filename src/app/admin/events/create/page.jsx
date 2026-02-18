@@ -14,16 +14,59 @@ export default function CreateEventPage() {
 
     const handleSubmit = async (formData) => {
         try {
+            // Separate gate staff from event data
+            const { gateStaff, ...eventData } = formData;
+
+            // 1. Create Event
             const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify(formData),
+                body: JSON.stringify(eventData),
             });
 
             if (response.ok) {
+                const newEvent = await response.json();
+                const eventId = newEvent._id;
+
+                // 2. Create Gate Staff Assignments
+                if (gateStaff && gateStaff.length > 0) {
+                    console.log('Assigning Gate Staff:', gateStaff);
+                    try {
+                        const assignmentPromises = gateStaff.map(staff => {
+                            const userId = typeof staff.userId === 'object' ? staff.userId._id : staff.userId;
+
+                            if (!userId) {
+                                console.error('Invalid userId for staff:', staff);
+                                return Promise.resolve(); // Skip invalid staff
+                            }
+
+                            return fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/gatestaffassignment`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Authorization': `Bearer ${token}`
+                                },
+                                body: JSON.stringify({
+                                    userId: userId,
+                                    eventId: eventId,
+                                    gateName: staff.gateName
+                                }),
+                            }).then(res => {
+                                if (!res.ok) console.error('Failed to assign staff:', userId, res.status);
+                                return res.json();
+                            });
+                        });
+
+                        await Promise.all(assignmentPromises);
+                    } catch (assignmentError) {
+                        console.error('Error assigning gate staff:', assignmentError);
+                        alert('Event created, but there was an error assigning some gate staff.');
+                    }
+                }
+
                 router.push('/admin/events');
             } else {
                 console.error('Failed to create event');

@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../context/AuthContext';
-import { Plus, Edit2, Trash2, MapPin, Calendar as CalendarIcon, Users, Crown, Sparkles, ArrowRight, ArrowLeft, Search, Filter, ChevronDown, X, UsersIcon, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Edit2, Trash2, MapPin, Calendar as CalendarIcon, Users, Crown, Sparkles, ArrowRight, ArrowLeft, Search, Filter, ChevronDown, X, UsersIcon, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
 import RoleGuard from "../../components/RoleGuard";
 import Navbar from "../../components/Navbar";
 import Footer from "@/app/components/Footer";
@@ -183,7 +183,7 @@ export default function AdminEventsPage() {
         return pages;
     };
 
-    const handleEdit = (id) => {
+    const handleView = (id) => {
         router.push(`/admin/events/${id}`);
     };
 
@@ -505,7 +505,8 @@ export default function AdminEventsPage() {
                                             )}
 
                                             {/* Gradient & Glass Overlay */}
-                                            <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent opacity-80"></div>
+                                            <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent opacity-80 hover:cursor-pointer"
+                                                onClick={() => handleView(event._id)}></div>
 
                                             {/* Status Badge - Floating Style */}
                                             <div className="absolute top-6 right-6 transform group-hover:scale-110 transition-transform duration-300">
@@ -550,11 +551,11 @@ export default function AdminEventsPage() {
 
                                                 {/* Edit Button */}
                                                 <button
-                                                    onClick={() => handleEdit(event._id)}
+                                                    onClick={() => handleView(event._id)}
                                                     className="flex-[2] flex items-center justify-center gap-2 px-4 py-4 bg-primary hover:bg-primary-dark text-primary-foreground rounded-2xl font-black transition-all shadow-lg hover:shadow-primary/20 group/btn min-h-[64px]"
                                                 >
-                                                    <Edit2 className="w-4 h-4 group-hover/btn:rotate-12 transition-transform" />
-                                                    Edit
+                                                    <Eye className="w-4 h-4 group-hover/btn:rotate-12 transition-transform" />
+                                                    View
                                                 </button>
 
                                                 {/* Delete Button */}

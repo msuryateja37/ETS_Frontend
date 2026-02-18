@@ -214,6 +214,14 @@ export default function UserTable({ users, onRoleUpdate, onPermissionsUpdate, on
         </div>
       </div>
 
+      {showRoleDialog && selectedUser && (
+        <RoleChangeDialog
+          user={selectedUser}
+          onClose={handleCloseDialog}
+          onConfirm={handleRoleChange}
+        />
+      )}
+
       {/* Delete Confirmation Dialog */}
       <DeleteConfirmationDialog
         isOpen={showDeleteDialog}
