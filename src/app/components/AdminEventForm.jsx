@@ -5,13 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { Calendar, MapPin, DollarSign, Users, Image, Info, Phone, Mail, Clock, Save, Plus, X, CheckCircle2, AlertCircle, Shield } from 'lucide-react';
 import RoleGuard from "../components/RoleGuard";
 
-const MOCK_GATE_STAFF = [
-    { id: '1', name: 'Sarah Wilson', email: 'sarah.w@example.com', phone: '+1 234 567 8901' },
-    { id: '2', name: 'Mike Johnson', email: 'mike.j@example.com', phone: '+1 234 567 8902' },
-    { id: '3', name: 'Emily Davis', email: 'emily.d@example.com', phone: '+1 234 567 8903' },
-    { id: '4', name: 'Alex Brown', email: 'alex.b@example.com', phone: '+1 234 567 8904' },
-    { id: '5', name: 'Chris Taylor', email: 'chris.t@example.com', phone: '+1 234 567 8905' }
-];
+// Removed MOCK_GATE_STAFF
 
 export default function AdminEventForm({ initialData = null, onSubmit }) {
     const { token } = useAuth();
@@ -43,9 +37,10 @@ export default function AdminEventForm({ initialData = null, onSubmit }) {
     const [loading, setLoading] = useState(false);
 
     // Gate Staff State
-    const [selectedStaffIds, setSelectedStaffIds] = useState([]);
+    const [selectedStaffIds, setSelectedStaffIds] = useState([]); // IDs of staff selected in dropdown
     const [isStaffDropdownOpen, setIsStaffDropdownOpen] = useState(false);
-    const [assignedStaff, setAssignedStaff] = useState([]);
+    const [assignedStaff, setAssignedStaff] = useState([]); // Array of staff objects with gateName
+    const [gateStaffList, setGateStaffList] = useState([]); // All available gate staff from backend
 
     useEffect(() => {
         const fetchVenues = async () => {
@@ -62,9 +57,6 @@ export default function AdminEventForm({ initialData = null, onSubmit }) {
         fetchVenues();
     }, []);
 
-    /*
-    // TODO: Uncomment and adapt this useEffect when the backend API for gate staff is ready
-    // You will need to replace MOCK_GATE_STAFF with a state variable (e.g., gateStaffList)
     useEffect(() => {
         const fetchGateStaff = async () => {
             try {
@@ -72,14 +64,13 @@ export default function AdminEventForm({ initialData = null, onSubmit }) {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const data = await response.json();
-                // setGateStaffList(data.staff || []); 
+                setGateStaffList(data || []);
             } catch (error) {
                 console.error('Error fetching gate staff:', error);
             }
         };
         fetchGateStaff();
-    }, []);
-    */
+    }, [token]);
 
     useEffect(() => {
         if (initialData) {
@@ -242,21 +233,38 @@ export default function AdminEventForm({ initialData = null, onSubmit }) {
         return true;
     };
 
+    const getUserId = (userOrId) => {
+        if (!userOrId) return null;
+        return typeof userOrId === 'object' ? userOrId._id : userOrId;
+    };
+
     const handleAddStaff = () => {
         if (selectedStaffIds.length === 0) return;
 
-        const newStaff = MOCK_GATE_STAFF.filter(s => selectedStaffIds.includes(s.id));
-        // Filter out any that might have been added concurrently (though UI prevents this)
-        const uniqueNewStaff = newStaff.filter(s => !assignedStaff.some(assigned => assigned.id === s.id));
+        // Find the staff objects from the IDs
+        const newStaff = gateStaffList.filter(s => selectedStaffIds.includes(s._id));
+
+        // Filter out any that might have been added concurrently
+        const uniqueNewStaff = newStaff.filter(s => {
+            const sUserId = getUserId(s.userId);
+            return !assignedStaff.some(assigned => getUserId(assigned.userId) === sUserId);
+        });
 
         if (uniqueNewStaff.length > 0) {
-            setAssignedStaff([...assignedStaff, ...uniqueNewStaff]);
+            // Add new staff with empty gateName
+            const newAssignments = uniqueNewStaff.map(s => ({
+                ...s,
+                gateName: ''
+            }));
+
+            setAssignedStaff([...assignedStaff, ...newAssignments]);
             setSelectedStaffIds([]);
             setIsStaffDropdownOpen(false);
         }
     };
 
-    const toggleStaffSelection = (staffId) => {
+    const toggleStaffSelection = (staff) => {
+        const staffId = staff._id;
         setSelectedStaffIds(prev =>
             prev.includes(staffId)
                 ? prev.filter(id => id !== staffId)
@@ -265,7 +273,13 @@ export default function AdminEventForm({ initialData = null, onSubmit }) {
     };
 
     const handleRemoveStaff = (staffId) => {
-        setAssignedStaff(assignedStaff.filter(s => s.id !== staffId));
+        setAssignedStaff(assignedStaff.filter(s => s._id !== staffId));
+    };
+
+    const handleGateNameChange = (index, value) => {
+        const newAssignedStaff = [...assignedStaff];
+        newAssignedStaff[index] = { ...newAssignedStaff[index], gateName: value };
+        setAssignedStaff(newAssignedStaff);
     };
 
     const handleSubmit = async (e) => {
@@ -273,6 +287,13 @@ export default function AdminEventForm({ initialData = null, onSubmit }) {
 
         // Validate zones and sections before submitting
         if (!validateZonesAndSections()) {
+            return;
+        }
+
+        // Validate gate staff assignments
+        const invalidStaff = assignedStaff.filter(s => !s.gateName || s.gateName.trim() === '');
+        if (invalidStaff.length > 0) {
+            alert('Please enter a Gate Name for all assigned staff members');
             return;
         }
 
@@ -612,27 +633,33 @@ export default function AdminEventForm({ initialData = null, onSubmit }) {
                                     {isStaffDropdownOpen && (
                                         <div className="absolute z-10 w-full mt-2 bg-card border border-border rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                                             <div className="max-h-60 overflow-y-auto">
-                                                {MOCK_GATE_STAFF.filter(s => !assignedStaff.some(assigned => assigned.id === s.id)).length === 0 ? (
+                                                {gateStaffList.filter(s => {
+                                                    const sUserId = getUserId(s.userId);
+                                                    return !assignedStaff.some(assigned => getUserId(assigned.userId) === sUserId);
+                                                }).length === 0 ? (
                                                     <div className="p-4 text-center text-sm text-muted-foreground">
                                                         No more staff available
                                                     </div>
                                                 ) : (
                                                     <div className="p-2 space-y-1">
-                                                        {MOCK_GATE_STAFF.filter(s => !assignedStaff.some(assigned => assigned.id === s.id)).map(staff => (
+                                                        {gateStaffList.filter(s => {
+                                                            const sUserId = getUserId(s.userId);
+                                                            return !assignedStaff.some(assigned => getUserId(assigned.userId) === sUserId);
+                                                        }).map(staff => (
                                                             <div
-                                                                key={staff.id}
-                                                                onClick={() => toggleStaffSelection(staff.id)}
+                                                                key={staff._id}
+                                                                onClick={() => toggleStaffSelection(staff)}
                                                                 className="flex items-center gap-3 p-3 rounded-lg hover:bg-primary/5 cursor-pointer transition-colors"
                                                             >
-                                                                <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${selectedStaffIds.includes(staff.id)
+                                                                <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${selectedStaffIds.includes(staff._id)
                                                                     ? "bg-primary border-primary text-primary-foreground"
                                                                     : "border-muted-foreground/30 bg-background"
                                                                     }`}>
-                                                                    {selectedStaffIds.includes(staff.id) && <CheckCircle2 className="w-3.5 h-3.5" />}
+                                                                    {selectedStaffIds.includes(staff._id) && <CheckCircle2 className="w-3.5 h-3.5" />}
                                                                 </div>
                                                                 <div>
-                                                                    <div className="font-medium text-sm">{staff.name}</div>
-                                                                    <div className="text-xs text-muted-foreground">{staff.phone}</div>
+                                                                    <div className="font-medium text-sm">{staff.userId?.name || 'Unknown Name'}</div>
+                                                                    <div className="text-xs text-muted-foreground">{staff.userId?.email || 'No Email'} . {staff.userId?.phone || 'No Phone'}</div>
                                                                 </div>
                                                             </div>
                                                         ))}
@@ -661,26 +688,37 @@ export default function AdminEventForm({ initialData = null, onSubmit }) {
                                         <tr>
                                             <th className="px-6 py-4 text-sm font-semibold text-foreground">Name</th>
                                             <th className="px-6 py-4 text-sm font-semibold text-foreground">Contact</th>
+                                            <th className="px-6 py-4 text-sm font-semibold text-foreground">Gate Name *</th>
                                             <th className="px-6 py-4 text-sm font-semibold text-foreground text-right">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-border">
-                                        {assignedStaff.map((staff) => (
-                                            <tr key={staff.id} className="hover:bg-background-elevated/50 transition-colors">
+                                        {assignedStaff.map((staff, index) => (
+                                            <tr key={staff._id || index} className="hover:bg-background-elevated/50 transition-colors">
                                                 <td className="px-6 py-4">
-                                                    <div className="font-medium text-foreground">{staff.name}</div>
-                                                    <div className="text-xs text-muted-foreground">{staff.email}</div>
+                                                    <div className="font-medium text-foreground">{staff.userId?.name}</div>
+                                                    <div className="text-xs text-muted-foreground">{staff.userId?.email}</div>
                                                 </td>
                                                 <td className="px-6 py-4 text-sm text-foreground">
                                                     <div className="flex items-center gap-2">
                                                         <Phone className="w-3 h-3 text-muted-foreground" />
-                                                        {staff.phone}
+                                                        {staff.userId?.phone || 'N/A'}
                                                     </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <input
+                                                        type="text"
+                                                        value={staff.gateName || ''}
+                                                        onChange={(e) => handleGateNameChange(index, e.target.value)}
+                                                        placeholder="Enter Gate Name"
+                                                        className="w-full px-3 py-2 rounded-lg border border-border bg-background focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all outline-none text-sm"
+                                                        required
+                                                    />
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
                                                     <button
                                                         type="button"
-                                                        onClick={() => handleRemoveStaff(staff.id)}
+                                                        onClick={() => handleRemoveStaff(staff._id)}
                                                         className="p-2 text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
                                                         title="Remove staff"
                                                     >

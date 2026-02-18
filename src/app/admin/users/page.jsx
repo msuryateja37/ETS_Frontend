@@ -173,6 +173,8 @@ export default function UserManagementPage() {
       // Handle customer record creation/deletion based on role change
       const isChangingToCustomer = oldRole !== 'CUSTOMER' && newRole === 'CUSTOMER';
       const isChangingFromCustomer = oldRole === 'CUSTOMER' && newRole !== 'CUSTOMER';
+      const isChangingToGate = oldRole !== 'GATE' && newRole === 'GATE';
+      const isChangingFromGate = oldRole === 'GATE' && newRole !== 'GATE';
 
       if (isChangingToCustomer) {
         // Create customer record
@@ -231,6 +233,30 @@ export default function UserManagementPage() {
         }
       }
 
+      console.log('[handleRoleUpdate] oldRole:', oldRole, '| newRole:', newRole);
+      console.log('[handleRoleUpdate] isChangingToGate:', isChangingToGate, '| isChangingFromGate:', isChangingFromGate);
+
+      // Note: gate staff record creation on role→GATE is handled by the backend update() call above.
+      // We only need to handle deletion here as a safety net.
+      if (isChangingFromGate) {
+        // Find and delete gate staff record
+        console.log('[handleRoleUpdate] Deleting gate staff record for userId:', userToUpdate._id);
+        const gsResponse = await fetch(
+          `${process.env.NEXT_PUBLIC_BACKEND_URI}/gate-staff/user/${userToUpdate._id}`,
+          { headers: { 'Authorization': `Bearer ${token}` } }
+        );
+        if (gsResponse.ok) {
+          const gsRecords = await gsResponse.json();
+          console.log('[handleRoleUpdate] gate staff records to delete:', gsRecords.length);
+          for (const gs of gsRecords) {
+            await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/gate-staff/${gs._id}`, {
+              method: 'DELETE',
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+          }
+        }
+      }
+
       // Refresh users list
       await fetchUsers();
 
@@ -267,6 +293,31 @@ export default function UserManagementPage() {
 
   const handleDeleteUser = async (userId) => {
     try {
+      // Fetch user to check role before deleting
+      const userRes = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/user/${userId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (userRes.ok) {
+        const userToDelete = await userRes.json();
+
+        // If gate staff, delete gate staff record first
+        if (userToDelete.role === 'GATE') {
+          const gsResponse = await fetch(
+            `${process.env.NEXT_PUBLIC_BACKEND_URI}/gate-staff/user/${userId}`,
+            { headers: { 'Authorization': `Bearer ${token}` } }
+          );
+          if (gsResponse.ok) {
+            const gsRecords = await gsResponse.json();
+            for (const gs of gsRecords) {
+              await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/gate-staff/${gs._id}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+              });
+            }
+          }
+        }
+      }
+
       const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/user/${userId}`, {
         method: 'DELETE',
         headers: {
