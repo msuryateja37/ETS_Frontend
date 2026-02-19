@@ -343,7 +343,7 @@ export default function CustomerHomePage({ logout }) {
 
       {/* Category Filter */}
       <div className="bg-background sticky top-20 z-40 border-b border-primary/20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-2">
+        <div className="min-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-2">
           <div className="flex items-center space-x-2 overflow-x-auto scrollbar-hide p-3">
             {categories.map((category) => (
               <button
@@ -566,7 +566,7 @@ export default function CustomerHomePage({ logout }) {
               {Object.entries(groupedEvents).map(([category, events]) => (
                 <section key={category} className="w-full mb-8">
                   <div className="w-full py-8">
-                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <div className="min-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                       <div className="flex items-center justify-between mb-10">
                         <h2 className="text-4xl font-black text-primary flex items-center gap-4 uppercase tracking-tight">
                           <span className="w-1.5 h-12 bg-primary rounded-full"></span>

@@ -151,7 +151,7 @@ export default function PastEventsPage() {
                 setSearchQuery={setSearchQuery}
             />
 
-            <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+            <main className="flex-grow min-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
 
                 <div className="mb-8">
                     <div className="flex items-center gap-4 mb-6">

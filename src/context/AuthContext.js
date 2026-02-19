@@ -76,7 +76,7 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const verifyOtp = async (email, otp, name, phone, role = "CUSTOMER") => {
+  const verifyOtp = async (email, otp, name, phone, role = "CUSTOMER", rememberMe = false) => {
     try {
       const payload = {
         email: email.trim().toLowerCase(),
@@ -101,8 +101,13 @@ export function AuthProvider({ children }) {
       setToken(data.access_token);
       setUser(data.user);
 
-      localStorage.setItem("token", data.access_token);
-      localStorage.setItem("user", JSON.stringify(data.user));
+      if (rememberMe) {
+        localStorage.setItem("token", data.access_token);
+        localStorage.setItem("user", JSON.stringify(data.user));
+      } else {
+        sessionStorage.setItem("token", data.access_token);
+        sessionStorage.setItem("user", JSON.stringify(data.user));
+      }
 
       return { success: true };
     } catch (error) {
@@ -240,7 +245,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{user,token,loading,login,signup,logout,requestOtp,verifyOtp,forgotPassword,resetPassword,updateUser,requestContactUpdate,verifyContactUpdate}}
+      value={{ user, token, loading, login, signup, logout, requestOtp, verifyOtp, forgotPassword, resetPassword, updateUser, requestContactUpdate, verifyContactUpdate }}
     >
       {children}
     </AuthContext.Provider>

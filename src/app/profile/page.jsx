@@ -99,8 +99,41 @@ export default function ProfilePage() {
   };
 
   const handleRequestOTP = async () => {
-    setContactModal(prev => ({ ...prev, loading: true, error: "" }));
-    const result = await requestContactUpdate(contactModal.newValue, contactModal.type);
+    const type = contactModal.type;
+    const newValue = contactModal.newValue.trim();
+
+    // Client-side validation
+    if (!newValue) {
+      setContactModal(prev => ({ ...prev, error: `Please enter a new ${type}.` }));
+      return;
+    }
+
+    if (type === 'email') {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(newValue)) {
+        setContactModal(prev => ({ ...prev, error: 'Please enter a valid email address.' }));
+        return;
+      }
+      if (newValue === user.email) {
+        setContactModal(prev => ({ ...prev, error: 'New email must be different from your current email.' }));
+        return;
+      }
+    }
+
+    if (type === 'phone') {
+      const phoneRegex = /^\d{10}$/;
+      if (!phoneRegex.test(newValue)) {
+        setContactModal(prev => ({ ...prev, error: 'Phone number must be exactly 10 digits.' }));
+        return;
+      }
+      if (newValue === user.phone) {
+        setContactModal(prev => ({ ...prev, error: 'New phone number must be different from your current phone number.' }));
+        return;
+      }
+    }
+
+    setContactModal(prev => ({ ...prev, loading: true, error: '' }));
+    const result = await requestContactUpdate(newValue, type);
     if (result.success) {
       setContactModal(prev => ({ ...prev, step: 2, loading: false }));
     } else {
@@ -144,7 +177,7 @@ export default function ProfilePage() {
       <div className="min-h-screen bg-background">
         <Navbar />
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="min-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           {/* Header Section */}
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-4 mb-2">
@@ -374,9 +407,14 @@ export default function ProfilePage() {
                       <label className="block text-xs font-black text-muted-foreground uppercase tracking-widest mb-2">New {contactModal.type}</label>
                       <input
                         type={contactModal.type === 'email' ? 'email' : 'text'}
-                        placeholder={`Enter new ${contactModal.type}`}
+                        placeholder={contactModal.type === 'email' ? 'you@example.com' : '10-digit phone number'}
                         value={contactModal.newValue}
-                        onChange={(e) => setContactModal({ ...contactModal, newValue: e.target.value })}
+                        onChange={(e) => {
+                          const val = contactModal.type === 'email' ? e.target.value.toLowerCase() : e.target.value.replace(/\D/g, '').slice(0, 10);
+                          setContactModal({ ...contactModal, newValue: val, error: '' });
+                        }}
+                        maxLength={contactModal.type === 'phone' ? 10 : undefined}
+                        inputMode={contactModal.type === 'phone' ? 'numeric' : 'email'}
                         className="w-full bg-background border-2 border-primary/20 rounded-xl px-4 py-3 focus:border-primary transition-all outline-none font-bold text-foreground"
                       />
                     </div>

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Crown, Shield } from "lucide-react";
 
 export default function AuthLoginPage() {
@@ -11,6 +12,7 @@ export default function AuthLoginPage() {
   const [isLogin, setIsLogin] = useState(true);
   const [useOtp, setUseOtp] = useState(true);
   const [otpStep, setOtpStep] = useState("email");
+  const [rememberMe, setRememberMe] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -75,7 +77,7 @@ export default function AuthLoginPage() {
 
     let res;
     if (isLogin) {
-      res = await login(formData.email, formData.password, formData.rememberMe);
+      res = await login(formData.email, formData.password, rememberMe);
     } else {
       const { confirmPassword, ...signupData } = formData;
       res = await signup(signupData);
@@ -124,7 +126,8 @@ export default function AuthLoginPage() {
       formData.otp,
       formData.name,
       formData.phone,
-      formData.role
+      formData.role,
+      rememberMe
     );
     setOtpLoading(false);
     if (!res.success) {
@@ -320,6 +323,25 @@ export default function AuthLoginPage() {
                       className="block w-full rounded-xl border-2 border-primary/20 bg-card-elevated text-foreground shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 sm:text-xl p-5 text-center tracking-[0.5em] font-mono transition-all"
                     />
                   </div>
+                  <label className="flex items-center gap-3 cursor-pointer group select-none">
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        checked={rememberMe}
+                        onChange={(e) => setRememberMe(e.target.checked)}
+                        className="sr-only"
+                      />
+                      <div className={`w-5 h-5 rounded-md border-2 transition-all ${rememberMe ? 'bg-primary border-primary' : 'border-primary/30 bg-card-elevated group-hover:border-primary/60'}`}>
+                        {rememberMe && (
+                          <svg className="w-3 h-3 text-primary-foreground absolute top-0.5 left-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </div>
+                    </div>
+                    <span className="text-sm font-bold text-muted-foreground group-hover:text-foreground transition-colors">Keep me signed in</span>
+                  </label>
+
                   <button
                     onClick={handleVerifyOtp}
                     disabled={otpLoading || formData.otp.length < 6}
@@ -361,6 +383,14 @@ export default function AuthLoginPage() {
               <div className="relative">
                 <div className="flex justify-between items-center mb-2">
                   <label className="block text-xs font-black text-primary uppercase tracking-widest">Password</label>
+                  {isLogin && (
+                    <Link
+                      href="/auth/forgot-password"
+                      className="text-xs font-bold text-muted-foreground hover:text-primary transition-colors uppercase tracking-wider"
+                    >
+                      Forgot Password?
+                    </Link>
+                  )}
                 </div>
                 <input
                   type="password"
@@ -371,6 +401,27 @@ export default function AuthLoginPage() {
                   className="block w-full rounded-xl border-2 border-primary/20 bg-card-elevated text-foreground placeholder-muted-foreground shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 sm:text-sm p-4 transition-all"
                 />
               </div>
+
+              {isLogin && (
+                <label className="flex items-center gap-3 cursor-pointer group select-none">
+                  <div className="relative">
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                      className="sr-only"
+                    />
+                    <div className={`w-5 h-5 rounded-md border-2 transition-all ${rememberMe ? 'bg-primary border-primary' : 'border-primary/30 bg-card-elevated group-hover:border-primary/60'}`}>
+                      {rememberMe && (
+                        <svg className="w-3 h-3 text-primary-foreground absolute top-0.5 left-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </div>
+                  </div>
+                  <span className="text-sm font-bold text-muted-foreground group-hover:text-foreground transition-colors">Keep me signed in</span>
+                </label>
+              )}
 
               <div className="pt-2">
                 <button
@@ -393,7 +444,7 @@ export default function AuthLoginPage() {
               className="text-sm font-bold text-muted-foreground hover:text-foreground flex items-center justify-center gap-2 mx-auto transition-colors"
             >
               <span>{isLogin ? "New to Emperor's Palace?" : "Already have an account?"}</span>
-              <span className="text-primary font-black uppercase tracking-wider">{isLogin ? "Sign Up" : "Log In"}</span>
+              <span className="text-primary font-black uppercase tracking-wider">{isLogin ? "Sign Up" : "Sign In"}</span>
             </button>
           </div>
         </main>
