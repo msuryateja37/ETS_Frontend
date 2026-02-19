@@ -72,7 +72,7 @@ export default function CreateStaffPage() {
             <div className="min-h-screen bg-background text-foreground flex flex-col">
                 <Navbar />
 
-                <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-6">
+                <main className="flex-1 w-full min-w-7xl mx-auto px-4 sm:px-6 py-6">
                     {/* Header */}
                     <div className="mb-6 relative">
                         <div className="py-4">

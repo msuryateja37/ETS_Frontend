@@ -384,7 +384,7 @@ export default function EventSeatingPage() {
 
         {/* Floating Checkout Bar */}
         {selectedSeats.size > 0 && (
-          <div className="fixed bottom-8 left-1/2 -translate-x-1/2 w-full max-w-7xl px-2 z-50">
+          <div className="fixed bottom-8 left-1/2 -translate-x-1/2 w-full min-w-7xl px-2 z-50">
             <div className="bg-gradient-to-r from-card via-card-elevated to-card backdrop-blur-xl px-6 py-4 rounded-3xl border-2 border-primary/30 shadow-[0_20px_50px_rgba(212,175,55,0.2)] flex items-center justify-between gap-8">
               <div className="flex items-center space-x-6">
                 <div className="flex items-center justify-center w-16 h-16 bg-gradient-to-br from-primary to-primary-dark rounded-2xl shadow-lg shadow-primary/30 border-2 border-primary">

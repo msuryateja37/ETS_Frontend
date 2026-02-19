@@ -43,7 +43,7 @@ export default function LikesPage() {
       // Validate token exists before making request
       if (!token || token.trim() === '') {
         console.warn('No valid token available');
-        setError('Authentication token is not available. Please log in again.');
+        setError('Authentication token is not available. Please sign in again.');
         setIsLoading(false);
         return;
       }
@@ -58,7 +58,7 @@ export default function LikesPage() {
       if (!response.ok) {
         if (response.status === 401) {
           console.warn('Unauthorized access - session expired or invalid token');
-          setError('Your session has expired. Please log in again.');
+          setError('Your session has expired. Please sign in again.');
           // Clear auth state
           localStorage.removeItem('token');
           localStorage.removeItem('user');
@@ -226,7 +226,7 @@ export default function LikesPage() {
           setSearchQuery={setSearchQuery}
         />
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="min-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           {/* Header Section */}
           <div className="mb-8">
             <div className="flex items-center gap-4 mb-6">
