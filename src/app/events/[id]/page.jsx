@@ -240,7 +240,7 @@ export default function EventDetailsPage() {
           <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent" />
         </div>
 
-        <div className="relative h-full min-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col justify-end pb-16">
+        <div className="relative h-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col justify-end pb-16">
           <button
             onClick={() => router.back()}
             className="absolute group flex items-center gap-2 top-6 left-4 sm:left-8 px-5 py-2.5 bg-card border-2 border-primary/30 rounded-full text-primary font-bold hover:bg-background-hover hover:border-primary transition-all shadow-lg uppercase tracking-wider"
@@ -337,7 +337,7 @@ export default function EventDetailsPage() {
         </div>
       </div>
 
-      <div className="min-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 relative z-10 pb-20">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 relative z-10 pb-20">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
 
           {/* Main Content */}

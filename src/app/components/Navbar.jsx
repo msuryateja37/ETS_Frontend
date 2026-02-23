@@ -69,11 +69,17 @@ export default function Navbar({ showSearch = false, searchQuery, setSearchQuery
       case "MANAGEMENT":
         return managementNavItems;
       default:
-        return [{ icon: Home, label: "Home", path: "/" }];
+        return [{ icon: Home, label: "Home", path: "/" },
+                { icon: Calendar, label: "Past Events", path: "/customer/past-events" },
+                { icon: MessageCircle, label: "Contact Us", path: "/customer/contactus" },
+        ];
     }
   };
 
-  const navItems = user ? getNavItems() : [{ icon: Home, label: "Home", path: "/" }];
+  const navItems = user ? getNavItems() : [{ icon: Home, label: "Home", path: "/" },
+                { icon: Calendar, label: "Past Events", path: "/customer/past-events" },
+                { icon: MessageCircle, label: "Contact Us", path: "/customer/contactus" },
+        ];
 
   return (
     <>
