@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Mail, Phone, MapPin, Clock, MessageCircle, ArrowLeft, Send, HelpCircle, ChevronDown, ChevronUp, Crown } from "lucide-react";
 import Navbar from "@/app/components/Navbar";
-import RoleGuard from "@/app/components/RoleGuard";
+// import RoleGuard from "@/app/components/RoleGuard";
 import { useRouter } from "next/navigation";
 import Footer from "@/app/components/Footer";
 
@@ -72,11 +72,11 @@ export default function ContactUsPage() {
   };
 
   return (
-    <RoleGuard allowedRoles={["CUSTOMER"]}>
+    <div>
       <div className="min-h-screen bg-background pb-20">
         <Navbar />
 
-        <div className="min-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           {/* Header Section */}
           <div className="mb-8">
             <div className="flex items-center gap-4 mb-6">
@@ -105,7 +105,7 @@ export default function ContactUsPage() {
           </div>
 
           {/* Contact Content - Single Column Layout */}
-          <div className="min-w-7xl mx-auto space-y-8">
+          <div className="max-w-7xl mx-auto space-y-8">
             {/* Interactive FAQ Section */}
             <div className="bg-gradient-to-br from-card to-background rounded-2xl p-8 shadow-xl border-2 border-primary/20">
               <h3 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary to-primary-light mb-6 flex items-center gap-3 uppercase tracking-wide">
@@ -268,6 +268,6 @@ export default function ContactUsPage() {
         </div>
       </div>
       <Footer />
-    </RoleGuard>
+      </div>
   );
 }
