@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { useAdminEvent, useEventAssignments, useUpdateEventWithStaff } from '@/hooks/useAdmin';
 import { ArrowLeft, Edit2 } from 'lucide-react';
 import AdminEventForm from '@/app/components/AdminEventForm';
 import RoleGuard from '@/app/components/RoleGuard';
@@ -12,176 +13,71 @@ export default function EditEventPage({ params }) {
     const { id } = React.use(params);
     const router = useRouter();
     const { token } = useAuth();
-    const [initialAssignments, setInitialAssignments] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [event, setEvent] = useState(null);
 
-    useEffect(() => {
-        if (!token) return;
+    // Data Fetching
+    const { data: eventData, isLoading: isEventLoading, isError: isEventError } = useAdminEvent(id);
+    const { data: initialAssignments = [], isLoading: isAssignmentsLoading } = useEventAssignments(id);
 
-        const fetchEventAndStaff = async () => {
-            try {
-                // Fetch Event
-                const eventResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events/${id}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-
-                let eventData = null;
-                if (eventResponse.ok) {
-                    eventData = await eventResponse.json();
-                } else {
-                    console.error('Failed to fetch event');
-                    alert('Event not found');
-                    router.push('/admin/events');
-                    return;
-                }
-
-                // Fetch Gate Staff Assignments
-                const assignmentsResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/gatestaffassignment/event/${id}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-
-                let assignments = [];
-                if (assignmentsResponse.ok) {
-                    assignments = await assignmentsResponse.json();
-                }
-
-                setInitialAssignments(assignments);
-                setEvent({ ...eventData, gateStaff: assignments });
-
-            } catch (error) {
-                console.error('Error fetching event data:', error);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchEventAndStaff();
-    }, [id, router, token]);
+    // Mutations
+    const updateMutation = useUpdateEventWithStaff();
 
     const handleSubmit = async (formData) => {
         try {
-            const { gateStaff, ...eventData } = formData;
+            const { gateStaff: currentAssignments = [], ...eventFields } = formData;
 
-            // 1. Update Event
-            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events/${id}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify(eventData),
-            });
+            const getUserId = (staff) => {
+                if (!staff.userId) return null;
+                return typeof staff.userId === 'object' ? staff.userId._id : staff.userId;
+            };
 
-            if (response.ok) {
-                // 2. Reconcile Gate Staff Assignments
-                const currentAssignments = gateStaff || [];
-                console.log('Current Assignments (Form):', currentAssignments);
-                console.log('Initial Assignments (DB):', initialAssignments);
+            // Identify ADDs
+            const assignmentsToAdd = currentAssignments.filter(curr => {
+                const currId = getUserId(curr);
+                return !initialAssignments.some(init => getUserId(init) === currId);
+            }).map(staff => ({
+                userId: getUserId(staff),
+                gateStaffId: staff._id,
+                gateName: staff.gateName
+            }));
 
-                const getUserId = (staff) => {
-                    if (!staff.userId) return null;
-                    return typeof staff.userId === 'object' ? staff.userId._id : staff.userId;
-                };
-
-                // Identify ADDs
-                const toAdd = currentAssignments.filter(curr => {
-                    const currId = getUserId(curr);
-                    return !initialAssignments.some(init => getUserId(init) === currId);
-                });
-
-                // Identify DELETEs
-                const toDelete = initialAssignments.filter(init => {
+            // Identify DELETEs
+            const assignmentsToDelete = initialAssignments
+                .filter(init => {
                     const initId = getUserId(init);
                     return !currentAssignments.some(curr => getUserId(curr) === initId);
-                });
+                })
+                .map(init => init._id);
 
-                // Identify UPDATEs (only if gateName changed)
-                const toUpdate = currentAssignments.filter(curr => {
+            // Identify UPDATEs
+            const assignmentsToUpdate = currentAssignments
+                .filter(curr => {
                     const currId = getUserId(curr);
                     const init = initialAssignments.find(i => getUserId(i) === currId);
                     return init && init.gateName !== curr.gateName;
+                })
+                .map(curr => {
+                    const init = initialAssignments.find(i => getUserId(i) === getUserId(curr));
+                    return { id: init._id, gateName: curr.gateName };
                 });
 
-                const apiPromises = [];
+            await updateMutation.mutateAsync({
+                eventId: id,
+                eventData: eventFields,
+                assignmentsToAdd,
+                assignmentsToDelete,
+                assignmentsToUpdate
+            });
 
-                // Execute Adds
-                toAdd.forEach(staff => {
-                    console.log('Adding staff:', staff);
-                    const userId = getUserId(staff);
-                    if (!userId) {
-                        console.error('Missing userId for staff:', staff);
-                        return;
-                    }
-                    apiPromises.push(
-                        fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/gatestaffassignment`, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Authorization': `Bearer ${token}`
-                            },
-                            body: JSON.stringify({
-                                userId: userId,
-                                eventId: id,
-                                gateName: staff.gateName
-                            })
-                        }).then(res => {
-                            if (!res.ok) console.error('Failed to add staff:', userId, res.status);
-                            return res.json();
-                        })
-                    );
-                });
-
-                // Execute Deletes
-                toDelete.forEach(staff => {
-                    console.log('Deleting staff:', staff);
-                    apiPromises.push(
-                        fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/gatestaffassignment/${staff._id}`, {
-                            method: 'DELETE',
-                            headers: { 'Authorization': `Bearer ${token}` }
-                        }).then(res => {
-                            if (!res.ok) console.error('Failed to delete staff:', staff._id, res.status);
-                        })
-                    );
-                });
-
-                // Execute Updates (using the assignment ID from initialAssignments)
-                toUpdate.forEach(staff => {
-                    const currId = getUserId(staff);
-                    const init = initialAssignments.find(i => getUserId(i) === currId);
-                    if (init) {
-                        console.log('Updating staff:', staff);
-                        apiPromises.push(
-                            fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/gatestaffassignment/${init._id}`, {
-                                method: 'PUT',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Authorization': `Bearer ${token}`
-                                },
-                                body: JSON.stringify({
-                                    gateName: staff.gateName
-                                })
-                            }).then(res => {
-                                if (!res.ok) console.error('Failed to update staff:', init._id, res.status);
-                            })
-                        );
-                    }
-                });
-
-                await Promise.all(apiPromises);
-
-                router.push(`/admin/events/${id}`);
-            } else {
-                console.error('Failed to update event');
-                const errorData = await response.json();
-                alert(`Error updating event: ${errorData.message || 'Unknown error'}`);
-            }
+            router.push(`/admin/events/${id}`);
         } catch (error) {
             console.error('Error updating event:', error);
-            alert('An error occurred while updating the event.');
+            alert('An error occurred while updating the event: ' + error.message);
         }
     };
 
-    if (loading) {
+    const isLoading = isEventLoading || isAssignmentsLoading;
+
+    if (isLoading) {
         return (
             <RoleGuard allowedRoles={["ADMIN"]}>
                 <div className="min-h-screen bg-background p-6 flex items-center justify-center">
@@ -193,6 +89,23 @@ export default function EditEventPage({ params }) {
             </RoleGuard>
         );
     }
+
+    if (isEventError || !eventData) {
+        return (
+            <RoleGuard allowedRoles={["ADMIN"]}>
+                <div className="min-h-screen bg-background p-6 flex items-center justify-center">
+                    <div className="text-center">
+                        <h2 className="text-2xl font-bold text-foreground">Event not found</h2>
+                        <button onClick={() => router.push('/admin/events')} className="mt-4 px-6 py-2 bg-primary text-white rounded-lg">
+                            Back to Events
+                        </button>
+                    </div>
+                </div>
+            </RoleGuard>
+        );
+    }
+
+    const eventWithStaff = { ...eventData, gateStaff: initialAssignments };
 
     return (
         <RoleGuard allowedRoles={["ADMIN"]}>
@@ -231,7 +144,11 @@ export default function EditEventPage({ params }) {
                     </div>
 
                     {/* Form */}
-                    <AdminEventForm initialData={event} onSubmit={handleSubmit} />
+                    <AdminEventForm
+                        initialData={eventWithStaff}
+                        onSubmit={handleSubmit}
+                        isSubmitting={updateMutation.isPending}
+                    />
                 </div>
             </div>
         </RoleGuard>

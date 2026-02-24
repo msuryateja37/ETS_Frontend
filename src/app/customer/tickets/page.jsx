@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, } from "react";
 import Navbar from "../../components/Navbar";
 import { useAuth } from "../../../context/AuthContext";
 import {
@@ -20,6 +20,8 @@ import { formatDate } from "@/app/utils/dateUtils";
 import Footer from "@/app/components/Footer";
 import RoleGuard from "@/app/components/RoleGuard";
 
+import { useCustomerOrders } from "../../../hooks/useCustomer";
+
 function getSafeId(data) {
     if (!data) return null;
     if (typeof data === "string") return data;
@@ -36,154 +38,10 @@ export default function MyTicketsPage() {
     const { user, token } = useAuth();
     const router = useRouter();
 
-    const [orders, setOrders] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
+    const { data: orders = [], isLoading: loading, error: queryError } = useCustomerOrders(getSafeId(user));
+
     const [downloading, setDownloading] = useState({});
     const [searchQuery, setSearchQuery] = useState("");
-
-    useEffect(() => {
-        if (!user || !token) {
-            setLoading(false);
-            return;
-        }
-
-        const base = process.env.NEXT_PUBLIC_BACKEND_URI;
-        const userId = getSafeId(user);
-
-        if (!userId) {
-            setLoading(false);
-            return;
-        }
-
-        const fetchOrders = async () => {
-            setLoading(true);
-            try {
-                // 1. Fetch orders for the user
-                const orderRes = await fetch(`${base}/orders/user/${userId}`, {
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
-                if (!orderRes.ok) {
-                    if (orderRes.status === 401) {
-                        console.warn('Session expired - unauthorized access to orders');
-                        return;
-                    }
-                    throw new Error("Failed to fetch orders");
-                }
-                const orderData = await orderRes.json();
-
-                // 2. Extract event IDs to fetch event details
-                const eventIds = [...new Set(orderData.map((o) => getSafeId(o.eventId)).filter(Boolean))];
-
-                const eventsMap = new Map();
-                if (eventIds.length > 0) {
-                    const batchRes = await fetch(`${base}/events/batch`, {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            "Authorization": `Bearer ${token}`
-                        },
-                        body: JSON.stringify({ ids: eventIds })
-                    });
-                    if (batchRes.ok) {
-                        const eventsList = await batchRes.json();
-                        (Array.isArray(eventsList) ? eventsList : []).forEach((e) => eventsMap.set(getSafeId(e), e));
-                    }
-                }
-
-                // 3. For each order, fetch its tickets and enrich data
-                const enrichedOrders = await Promise.all(orderData.map(async (order) => {
-                    const oid = getSafeId(order);
-                    const eid = getSafeId(order.eventId);
-                    const eventDetails = eventsMap.get(eid) || null;
-
-                    // Fetch tickets for this order
-                    let tickets = [];
-                    try {
-                        const ticketRes = await fetch(`${base}/orders/${oid}/tickets`, {
-                            headers: {
-                                'Authorization': `Bearer ${token}`
-                            }
-                        });
-                        if (ticketRes.ok) {
-                            tickets = await ticketRes.json();
-                        }
-                    } catch (e) {
-                        console.error(`Error fetching tickets for order ${oid}:`, e);
-                    }
-
-                    // Get venue details if event exists
-                    let venueName = "Venue TBA";
-                    let venueDetails = null;
-                    if (eventDetails?.venueId) {
-                        if (typeof eventDetails.venueId === 'object' && eventDetails.venueId.sections) {
-                            venueDetails = eventDetails.venueId;
-                            venueName = venueDetails.name;
-                        } else {
-                            const vid = getSafeId(eventDetails.venueId);
-                            try {
-                                const vRes = await fetch(`${base}/venue/${vid}`, {
-                                    headers: { 'Authorization': `Bearer ${token}` }
-                                });
-                                if (vRes.ok) {
-                                    venueDetails = await vRes.json();
-                                    venueName = venueDetails.name;
-                                }
-                            } catch (e) { }
-                        }
-                    }
-
-                    // Fetch seat details for each ticket
-                    const ticketsWithSeats = await Promise.all(tickets.map(async (ticket) => {
-                        const sid = getSafeId(ticket.seatId);
-                        let seatDetails = null;
-                        if (sid) {
-                            try {
-                                const sRes = await fetch(`${base}/seats/${sid}`, {
-                                    headers: { 'Authorization': `Bearer ${token}` }
-                                });
-                                if (sRes.ok) seatDetails = await sRes.json();
-                            } catch (e) { }
-                        }
-                        return { ...ticket, seatDetails };
-                    }));
-
-                    return {
-                        ...order,
-                        eventDetails,
-                        venueDetails,
-                        tickets: ticketsWithSeats,
-                        venueName,
-                        ticketCount: tickets.length
-                    };
-                }));
-
-                const now = new Date();
-                const sortedOrders = enrichedOrders.sort((a, b) => {
-                    const dateA = new Date(a.eventDetails?.startDateTime || 0);
-                    const dateB = new Date(b.eventDetails?.startDateTime || 0);
-                    const isUpcomingA = dateA > now;
-                    const isUpcomingB = dateB > now;
-
-                    if (isUpcomingA && !isUpcomingB) return -1;
-                    if (!isUpcomingA && isUpcomingB) return 1;
-
-                    if (isUpcomingA) return dateA - dateB;
-                    return dateB - dateA;
-                });
-
-                setOrders(sortedOrders);
-            } catch (err) {
-                setError(err?.message || "Failed to load orders");
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchOrders();
-    }, [user, token]);
 
     const handleDownloadPDF = async (order) => {
         const orderId = getSafeId(order);
@@ -434,6 +292,26 @@ export default function MyTicketsPage() {
                 <div className="text-center">
                     <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
                     <p className="text-primary font-semibold tracking-wide">Fetching your orders...</p>
+                </div>
+            </div>
+        </RoleGuard>
+    );
+
+    if (queryError) return (
+        <RoleGuard allowedRoles={["CUSTOMER"]}>
+            <div className="min-h-screen bg-background flex items-center justify-center">
+                <div className="text-center max-w-md p-8 bg-card rounded-3xl border-2 border-destructive/20 shadow-xl">
+                    <div className="w-20 h-20 bg-destructive/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <ArrowLeft className="w-10 h-10 text-destructive" />
+                    </div>
+                    <h2 className="text-2xl font-black text-foreground mb-2 uppercase">Load Failed</h2>
+                    <p className="text-muted-foreground mb-8 text-sm">{queryError.message}</p>
+                    <button
+                        onClick={() => window.location.reload()}
+                        className="w-full py-4 bg-primary text-primary-foreground rounded-2xl font-black uppercase tracking-widest hover:bg-primary-dark transition shadow-lg"
+                    >
+                        Try Again
+                    </button>
                 </div>
             </div>
         </RoleGuard>

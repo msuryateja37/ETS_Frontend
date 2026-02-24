@@ -7,9 +7,15 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import Footer from "../components/Footer";
 
+import { useUpdateProfile } from "../../hooks/useAdmin";
+import { useRequestContactUpdate, useVerifyContactUpdate } from "../../hooks/useAuth";
+
 export default function ProfilePage() {
-  const { user, token, loading, logout, updateUser, requestContactUpdate, verifyContactUpdate } = useAuth();
+  const { user, token, loading, logout, updateUser } = useAuth();
   const router = useRouter();
+  const updateProfileMutation = useUpdateProfile();
+  const requestContactUpdateMutation = useRequestContactUpdate();
+  const verifyContactUpdateMutation = useVerifyContactUpdate();
 
   // Basic editing state
   const [isEditing, setIsEditing] = useState(false);
@@ -30,16 +36,14 @@ export default function ProfilePage() {
     error: ""
   });
 
-  const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URI || 'http://localhost:5000';
-
   useEffect(() => {
     if (!loading) {
       if (!user) {
         router.replace("/");
       } else {
         setFormData({
-          name: user.name || "",
-          address: user.address || "",
+          name: user?.name || "",
+          address: user?.address || "",
         });
       }
     }
@@ -49,8 +53,8 @@ export default function ProfilePage() {
     if (isEditing) {
       // Reset if canceling
       setFormData({
-        name: user.name || "",
-        address: user.address || "",
+        name: user?.name || "",
+        address: user?.address || "",
       });
     }
     setIsEditing(!isEditing);
@@ -63,21 +67,7 @@ export default function ProfilePage() {
 
   const handleProfileSave = async () => {
     try {
-      const res = await fetch(`${API_BASE}/user/${user._id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(formData),
-      });
-
-      if (!res.ok) {
-        throw new Error("Failed to update profile");
-      }
-
-      const updatedUser = await res.json();
-      updateUser(updatedUser);
+      await updateProfileMutation.mutateAsync(formData);
       setIsEditing(false);
     } catch (error) {
       console.error("Save Error:", error);
@@ -90,7 +80,7 @@ export default function ProfilePage() {
       ...contactModal,
       isOpen: true,
       type,
-      currentValue: type === 'email' ? user.email : user.phone,
+      currentValue: type === 'email' ? user?.email : user?.phone,
       newValue: "",
       otp: "",
       step: 1,
@@ -114,7 +104,7 @@ export default function ProfilePage() {
         setContactModal(prev => ({ ...prev, error: 'Please enter a valid email address.' }));
         return;
       }
-      if (newValue === user.email) {
+      if (newValue === user?.email) {
         setContactModal(prev => ({ ...prev, error: 'New email must be different from your current email.' }));
         return;
       }
@@ -126,28 +116,32 @@ export default function ProfilePage() {
         setContactModal(prev => ({ ...prev, error: 'Phone number must be exactly 10 digits.' }));
         return;
       }
-      if (newValue === user.phone) {
+      if (newValue === user?.phone) {
         setContactModal(prev => ({ ...prev, error: 'New phone number must be different from your current phone number.' }));
         return;
       }
     }
 
     setContactModal(prev => ({ ...prev, loading: true, error: '' }));
-    const result = await requestContactUpdate(newValue, type);
-    if (result.success) {
+    try {
+      await requestContactUpdateMutation.mutateAsync({ newContact: newValue, type: type });
       setContactModal(prev => ({ ...prev, step: 2, loading: false }));
-    } else {
-      setContactModal(prev => ({ ...prev, error: result.error, loading: false }));
+    } catch (err) {
+      setContactModal(prev => ({ ...prev, error: err.message, loading: false }));
     }
   };
 
   const handleVerifyOTP = async () => {
     setContactModal(prev => ({ ...prev, loading: true, error: "" }));
-    const result = await verifyContactUpdate(contactModal.otp, contactModal.newValue, contactModal.type);
-    if (result.success) {
+    try {
+      await verifyContactUpdateMutation.mutateAsync({
+        otp: contactModal.otp,
+        newContact: contactModal.newValue,
+        type: contactModal.type
+      });
       setContactModal(prev => ({ ...prev, isOpen: false, loading: false }));
-    } else {
-      setContactModal(prev => ({ ...prev, error: result.error, loading: false }));
+    } catch (err) {
+      setContactModal(prev => ({ ...prev, error: err.message, loading: false }));
     }
   };
 
@@ -205,18 +199,18 @@ export default function ProfilePage() {
               <div className="bg-gradient-to-br from-card to-background rounded-3xl p-8 shadow-xl border-2 border-primary/20 text-center">
                 <div className="relative inline-block mb-6">
                   <div className="h-28 w-28 rounded-full bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center text-4xl font-black text-primary-foreground ring-4 ring-primary/30 shadow-lg shadow-primary/30 mx-auto">
-                    {user.name?.charAt(0).toUpperCase()}
+                    {user?.name?.charAt(0).toUpperCase()}
                   </div>
                   <div className="absolute -top-1 -right-1">
                     <Crown className="w-6 h-6 text-primary drop-shadow-lg" />
                   </div>
                 </div>
 
-                <h1 className="text-2xl font-black text-foreground mb-3 uppercase tracking-wide">{user.name}</h1>
+                <h1 className="text-2xl font-black text-foreground mb-3 uppercase tracking-wide">{user?.name}</h1>
 
                 <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-primary/20 to-primary-dark/20 text-primary rounded-full text-xs font-black uppercase tracking-wider border-2 border-primary/40 shadow-lg shadow-primary/10">
                   <Shield className="w-4 h-4" />
-                  {user.role}
+                  {user?.role}
                 </div>
               </div>
             </div>
@@ -235,10 +229,11 @@ export default function ProfilePage() {
                         <>
                           <button
                             onClick={handleProfileSave}
-                            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl font-bold hover:bg-primary-dark transition shadow-lg uppercase tracking-wider text-xs"
+                            disabled={updateProfileMutation.isPending}
+                            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl font-bold hover:bg-primary-dark transition shadow-lg uppercase tracking-wider text-xs disabled:opacity-50"
                           >
                             <Check className="w-4 h-4" />
-                            Save
+                            {updateProfileMutation.isPending ? "Saving..." : "Save"}
                           </button>
                           <button
                             onClick={handleEditToggle}
@@ -272,14 +267,14 @@ export default function ProfilePage() {
                           onChange={handleInputChange}
                           className="w-full bg-background/50 border-2 border-primary/20 rounded-xl px-4 py-2 focus:border-primary transition-all outline-none font-bold text-foreground"
                         />
-                      ) : user.name}
+                      ) : user?.name}
                       icon={<User className="w-5 h-5" />}
                     />
                     <ProfileRow
                       label="Email Address"
                       value={
                         <div className="flex items-center justify-between w-full">
-                          <span>{maskEmail(user.email)}</span>
+                          <span>{maskEmail(user?.email)}</span>
                           <button
                             onClick={() => openContactModal('email')}
                             className="text-xs font-black text-primary hover:underline uppercase tracking-tighter"
@@ -295,7 +290,7 @@ export default function ProfilePage() {
                       label="Phone Number"
                       value={
                         <div className="flex items-center justify-between w-full">
-                          <span>{maskPhone(user.phone)}</span>
+                          <span>{maskPhone(user?.phone)}</span>
                           <button
                             onClick={() => openContactModal('phone')}
                             className="text-xs font-black text-primary hover:underline uppercase tracking-tighter"
@@ -317,7 +312,7 @@ export default function ProfilePage() {
                           onChange={handleInputChange}
                           className="w-full bg-background/50 border-2 border-primary/20 rounded-xl px-4 py-2 focus:border-primary transition-all outline-none font-bold text-foreground resize-none h-24"
                         />
-                      ) : user.address}
+                      ) : user?.address}
                       icon={<MapPin className="w-5 h-5" />}
                     />
 
@@ -420,10 +415,10 @@ export default function ProfilePage() {
                     </div>
                     <button
                       onClick={handleRequestOTP}
-                      disabled={contactModal.loading || !contactModal.newValue}
+                      disabled={requestContactUpdateMutation.isPending || !contactModal.newValue}
                       className="w-full py-4 bg-primary text-primary-foreground rounded-2xl font-black uppercase tracking-widest hover:bg-primary-dark transition shadow-lg disabled:opacity-50"
                     >
-                      {contactModal.loading ? "Sending OTP..." : "Get Verification Code"}
+                      {requestContactUpdateMutation.isPending ? "Sending OTP..." : "Get Verification Code"}
                     </button>
                   </>
                 ) : (
@@ -444,10 +439,10 @@ export default function ProfilePage() {
                     </div>
                     <button
                       onClick={handleVerifyOTP}
-                      disabled={contactModal.loading || contactModal.otp.length < 4}
+                      disabled={verifyContactUpdateMutation.isPending || contactModal.otp.length < 4}
                       className="w-full py-4 bg-primary text-primary-foreground rounded-2xl font-black uppercase tracking-widest hover:bg-primary-dark transition shadow-lg disabled:opacity-50"
                     >
-                      {contactModal.loading ? "Verifying..." : "Verify & Update"}
+                      {verifyContactUpdateMutation.isPending ? "Verifying..." : "Verify & Update"}
                     </button>
                     <button
                       onClick={() => setContactModal({ ...contactModal, step: 1 })}

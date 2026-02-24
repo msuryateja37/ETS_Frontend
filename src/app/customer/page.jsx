@@ -10,99 +10,42 @@ import Footer from "../components/Footer";
 import { useAuth } from "@/context/AuthContext";
 import { formatDate } from "../utils/dateUtils";
 
+import { useCustomerEvents, useCustomerProfile, useToggleLike } from "../../hooks/useCustomer";
+
 export default function CustomerHomePage({ logout }) {
   const { user, token } = useAuth();
   const router = useRouter();
-  const [allEvents, setAllEvents] = useState([]);
-  const [filteredEvents, setFilteredEvents] = useState([]);
-  const [featuredEvents, setFeaturedEvents] = useState([]);
+
+  const { data: allEvents = [], isLoading: eventsLoading, isError: eventsError, error: eventsFetchError } = useCustomerEvents(user?.role);
+  const { data: customerData, isLoading: customerLoading } = useCustomerProfile(user?._id);
+  const toggleLikeMutation = useToggleLike();
+
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('ALL');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [currentSlide, setCurrentSlide] = useState(0);
-  const [likedEvents, setLikedEvents] = useState(new Set());
-  const [likingInProgress, setLikingInProgress] = useState(new Set());
-  const [customerId, setCustomerId] = useState(null);
   const [carouselImagesLoaded, setCarouselImagesLoaded] = useState(new Set());
   const [isTransitioning, setIsTransitioning] = useState(false);
 
-  const categories = ['ALL', 'MUSIC', 'SPORTS', 'CINEMA', 'COMEDY', 'CASINO', 'THEATER'];
+  const categories = ['ALL', 'MUSIC', 'SPORTS', 'COMEDY', 'CASINO', 'THEATER'];
   const autoRotateRef = useRef(null);
 
+  const customerId = customerData?._id;
+  const likedEvents = useMemo(() => new Set(customerData?.likedEvents?.map(id => id.toString()) || []), [customerData]);
+
+  const featuredEvents = useMemo(() => allEvents.slice(0, 5), [allEvents]);
+
+  // Preload carousel images
   useEffect(() => {
-    fetchEvents();
-    if (user && token) {
-      fetchCustomerData();
-    }
-  }, [user, token]);
-
-  useEffect(() => {
-    filterEvents();
-  }, [activeCategory, searchQuery, allEvents]);
-
-  const fetchEvents = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const role = user?.role || 'CUSTOMER';
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events?role=${role}`);
-      console.log('Fetch events response:', response);
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch events');
-      }
-
-      const data = await response.json();
-
-      setAllEvents(data || []);
-      const featured = (data || []).slice(0, 5);
-      setFeaturedEvents(featured);
-
-      // Preload carousel images
-      featured.forEach((event) => {
+    featuredEvents.forEach((event) => {
+      if (!carouselImagesLoaded.has(event._id)) {
         const img = new Image();
         img.src = getEventImage(event);
         img.onload = () => {
           setCarouselImagesLoaded(prev => new Set([...prev, event._id]));
         };
-      });
-
-    } catch (err) {
-      console.error('Error fetching events:', err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchCustomerData = async () => {
-    try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/customers/user/${user._id}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      if (!response.ok) {
-        if (response.status === 401) {
-          console.warn('Unauthorized access to customer data');
-          return;
-        }
-        console.error('Failed to fetch customer data');
-        return;
       }
-
-      const customerData = await response.json();
-      setCustomerId(customerData._id);
-
-      const likedEventIds = new Set(customerData.likedEvents?.map(id => id.toString()) || []);
-      setLikedEvents(likedEventIds);
-
-    } catch (err) {
-      console.error('Error fetching customer data:', err);
-    }
-  };
+    });
+  }, [featuredEvents]);
 
   const handleLikeToggle = async (eventId, e) => {
     e.stopPropagation();
@@ -117,70 +60,16 @@ export default function CustomerHomePage({ logout }) {
       return;
     }
 
-    if (likingInProgress.has(eventId)) {
-      return;
-    }
-
     try {
-      setLikingInProgress(prev => new Set([...prev, eventId]));
-
       const isLiked = likedEvents.has(eventId);
-      const endpoint = `${process.env.NEXT_PUBLIC_BACKEND_URI}/customers/${customerId}/like-event`;
-      const method = isLiked ? 'DELETE' : 'POST';
-
-      const response = await fetch(endpoint, {
-        method: method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ eventId: eventId })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to update like status');
-      }
-
-      setLikedEvents(prev => {
-        const newSet = new Set(prev);
-        if (isLiked) {
-          newSet.delete(eventId);
-        } else {
-          newSet.add(eventId);
-        }
-        return newSet;
-      });
-
-      setAllEvents(prevEvents =>
-        prevEvents.map(event =>
-          event._id === eventId
-            ? { ...event, likes: (event.likes || 0) + (isLiked ? -1 : 1) }
-            : event
-        )
-      );
-
-      setFeaturedEvents(prevEvents =>
-        prevEvents.map(event =>
-          event._id === eventId
-            ? { ...event, likes: (event.likes || 0) + (isLiked ? -1 : 1) }
-            : event
-        )
-      );
-
+      await toggleLikeMutation.mutateAsync({ customerId, eventId, isLiked });
     } catch (err) {
       console.error('Error toggling like:', err);
       alert(err.message || 'Failed to update like status');
-    } finally {
-      setLikingInProgress(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(eventId);
-        return newSet;
-      });
     }
   };
 
-  const filterEvents = () => {
+  const filteredEvents = useMemo(() => {
     const now = new Date();
     let filtered = allEvents.filter(event => {
       const isDraft = event.status === 'DRAFT';
@@ -207,12 +96,12 @@ export default function CustomerHomePage({ logout }) {
       );
     }
 
-    setFilteredEvents(filtered);
-  };
+    return filtered;
+  }, [activeCategory, searchQuery, allEvents]);
 
-  const handleSearch = () => {
-    filterEvents();
-  };
+  // const handleSearch = () => {
+  //   // The memoized filtering already handles this when searchQuery changes
+  // };
 
   const handleCategoryFilter = (category) => {
     setActiveCategory(category);
@@ -302,7 +191,7 @@ export default function CustomerHomePage({ logout }) {
     };
   }, [shouldShowCarousel, featuredEvents.length]);
 
-  if (loading) {
+  if (eventsLoading && allEvents.length === 0) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
@@ -313,16 +202,16 @@ export default function CustomerHomePage({ logout }) {
     );
   }
 
-  if (error) {
+  if (eventsError) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center max-w-md bg-gradient-to-br from-card to-background p-8 rounded-2xl shadow-2xl border border-primary/30">
           <div className="bg-destructive/30 border border-destructive/50 text-destructive-foreground px-6 py-4 rounded-xl mb-6">
             <p className="font-bold mb-1">Unable to Load Events</p>
-            <p className="text-sm">{error}</p>
+            <p className="text-sm">{eventsFetchError?.message}</p>
           </div>
           <button
-            onClick={fetchEvents}
+            onClick={() => window.location.reload()}
             className="px-6 py-3 bg-gradient-to-r from-primary to-primary-dark text-primary-foreground font-bold rounded-xl hover:from-primary-light hover:to-primary transition-all shadow-lg shadow-primary/30"
           >
             Try Again
@@ -338,18 +227,18 @@ export default function CustomerHomePage({ logout }) {
         showSearch={true}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
-        onSearch={handleSearch}
+      // onSearch={handleSearch}
       />
 
       {/* Category Filter */}
       <div className="bg-background sticky top-20 z-40 border-b border-primary/20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-2">
-          <div className="flex items-center space-x-2 overflow-x-auto scrollbar-hide p-3">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-center space-x-2 overflow-x-auto scrollbar-hide p-2">
             {categories.map((category) => (
               <button
                 key={category}
                 onClick={() => handleCategoryFilter(category)}
-                className={`flex-none px-6 py-2.5 rounded-full text-sm font-bold transition-all duration-200 transform uppercase tracking-wider ${activeCategory === category
+                className={`flex-none px-4 py-2 rounded-full text-sm font-bold transition-all duration-200 transform uppercase tracking-wider ${activeCategory === category
                   ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30 scale-105 border border-primary'
                   : 'bg-card text-primary hover:bg-background-hover border border-primary/30'
                   }`}
@@ -551,7 +440,7 @@ export default function CustomerHomePage({ logout }) {
                       onClick={() => handleEventClick(event._id)}
                       onLike={(e) => handleLikeToggle(event._id, e)}
                       isLiked={likedEvents.has(event._id)}
-                      isLiking={likingInProgress.has(event._id)}
+                      isLiking={toggleLikeMutation.isPending && toggleLikeMutation.variables?.eventId === event._id}
                       formatDate={formatDate}
                     />
                   ))}
@@ -589,7 +478,7 @@ export default function CustomerHomePage({ logout }) {
                             onClick={() => handleEventClick(event._id)}
                             onLike={(e) => handleLikeToggle(event._id, e)}
                             isLiked={likedEvents.has(event._id)}
-                            isLiking={likingInProgress.has(event._id)}
+                            isLiking={toggleLikeMutation.isPending && toggleLikeMutation.variables?.eventId === event._id}
                             formatDate={formatDate}
                           />
                         ))}

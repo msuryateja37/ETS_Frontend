@@ -22,17 +22,7 @@ import QRCode from "qrcode";
 import Footer from "@/app/components/Footer";
 import RoleGuard from "@/app/components/RoleGuard";
 
-function getSafeId(data) {
-    if (!data) return null;
-    if (typeof data === "string") return data;
-    if (data?.$oid) return data.$oid;
-    if (data?._id) return typeof data._id === "string" ? data._id : getSafeId(data._id);
-    if (data?.id) return typeof data.id === "string" ? data.id : getSafeId(data.id);
-    if (typeof data.toString === "function" && data.toString() !== "[object Object]") {
-        return data.toString();
-    }
-    return null;
-}
+import { useOrderDetails, getSafeId } from "../../../../hooks/useCustomer";
 
 export default function OrderDetailsPage() {
     const { user, token } = useAuth();
@@ -40,109 +30,26 @@ export default function OrderDetailsPage() {
     const params = useParams();
     const orderId = params.orderId;
 
-    const [orderData, setOrderData] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
+    const { data: orderData, isLoading: loading, error } = useOrderDetails(orderId);
+
     const [downloading, setDownloading] = useState(false);
     const [qrCodeUrl, setQrCodeUrl] = useState("");
 
     useEffect(() => {
-        if (!user || !token || !orderId) return;
+        if (!orderData || !orderId) return;
 
-        const base = process.env.NEXT_PUBLIC_BACKEND_URI;
-
-        const fetchOrderDetails = async () => {
-            setLoading(true);
+        const generateQr = async () => {
             try {
-                // Fetch order with tickets
-                const res = await fetch(`${base}/orders/${orderId}/with-tickets`, {
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
-                if (!res.ok) {
-                    if (res.status === 401) {
-                        console.warn('Session expired - unauthorized access');
-                        return;
-                    }
-                    throw new Error("Failed to fetch order details");
-                }
-                const data = await res.json();
-
-                const order = data.order;
-                const tickets = data.tickets;
-
-                // Fetch event details
-                const eid = getSafeId(order.eventId);
-                let eventDetails = null;
-                if (eid) {
-                    const eRes = await fetch(`${base}/events/${eid}`, {
-                        headers: {
-                            'Authorization': `Bearer ${token}`
-                        }
-                    });
-                    if (eRes.ok) {
-                        eventDetails = await eRes.json();
-                    }
-                }
-
-                // Fetch venue details
-                let venueDetails = null;
-                if (eventDetails?.venueId) {
-                    const vid = getSafeId(eventDetails.venueId);
-                    const vRes = await fetch(`${base}/venue/${vid}`, {
-                        headers: {
-                            'Authorization': `Bearer ${token}`
-                        }
-                    });
-                    if (vRes.ok) {
-                        venueDetails = await vRes.json();
-                    }
-                }
-
-                // Fetch seat details for each ticket
-                const ticketsWithSeats = await Promise.all(tickets.map(async (ticket) => {
-                    const sid = getSafeId(ticket.seatId);
-                    let seatDetails = null;
-                    if (sid) {
-                        try {
-                            const sRes = await fetch(`${base}/seats/${sid}`, {
-                                headers: {
-                                    'Authorization': `Bearer ${token}`
-                                }
-                            });
-                            if (sRes.ok) {
-                                seatDetails = await sRes.json();
-                            }
-                        } catch (e) { }
-                    }
-                    return { ...ticket, seatDetails };
-                }));
-
-                const finalData = {
-                    ...order,
-                    eventDetails,
-                    venueDetails,
-                    tickets: ticketsWithSeats,
-                    ticketCount: tickets.length
-                };
-
-                setOrderData(finalData);
-
-                // Generate QR Code for order
-                const codeToEncode = finalData.orderCode || orderId;
+                const codeToEncode = orderData.orderCode || orderId;
                 const qrUrl = await QRCode.toDataURL(codeToEncode, { width: 300 });
                 setQrCodeUrl(qrUrl);
-
-            } catch (err) {
-                setError(err?.message || "Failed to load order details");
-            } finally {
-                setLoading(false);
+            } catch (e) {
+                console.error("Failed to generate QR Code:", e);
             }
         };
 
-        fetchOrderDetails();
-    }, [user, orderId, token]);
+        generateQr();
+    }, [orderData, orderId]);
 
     const handleDownloadPDF = async () => {
         if (!orderData) return;

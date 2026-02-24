@@ -2,13 +2,15 @@
 
 import { useState } from "react";
 import { useAuth } from "../../../context/AuthContext";
+import { useForgotPassword } from "../../../hooks/useAuth";
 import Link from "next/link";
 import { Shield, Mail, ArrowLeft, CheckCircle } from "lucide-react";
 
 export default function ForgotPasswordPage() {
-    const { forgotPassword } = useAuth();
+    const { forgotPassword: legacyForgotPassword } = useAuth();
+    const forgotPasswordMutation = useForgotPassword();
     const [email, setEmail] = useState("");
-    const [status, setStatus] = useState("idle"); // idle, loading, success, error
+    const [status, setStatus] = useState("idle"); // idle, success, error
     const [message, setMessage] = useState("");
 
     const handleSubmit = async (e) => {
@@ -23,17 +25,15 @@ export default function ForgotPasswordPage() {
             return;
         }
 
-        setStatus("loading");
         setMessage("");
 
-        const res = await forgotPassword(trimmed);
-
-        if (res.success) {
+        try {
+            await forgotPasswordMutation.mutateAsync(trimmed);
             setStatus("success");
             setMessage("If an account exists with this email, a verification code has been sent.");
-        } else {
+        } catch (err) {
             setStatus("error");
-            setMessage(res.error || "Something went wrong. Please try again.");
+            setMessage(err.message || "Something went wrong. Please try again.");
         }
     };
 
@@ -115,10 +115,10 @@ export default function ForgotPasswordPage() {
 
                         <button
                             type="submit"
-                            disabled={status === "loading"}
+                            disabled={forgotPasswordMutation.isPending}
                             className="w-full flex justify-center py-4 px-4 border-2 border-primary rounded-xl shadow-md shadow-primary/30 text-sm font-black text-primary-foreground bg-gradient-to-r from-primary to-primary-dark hover:from-primary-light hover:to-primary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-all transform active:scale-[0.98] disabled:opacity-50 uppercase tracking-wider"
                         >
-                            {status === "loading" ? "Sending Code..." : "Send Verification Code"}
+                            {forgotPasswordMutation.isPending ? "Sending Code..." : "Send Verification Code"}
                         </button>
 
                         <div className="text-center">

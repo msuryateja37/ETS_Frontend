@@ -7,6 +7,8 @@ import RoleGuard from "../components/RoleGuard";
 
 // Removed MOCK_GATE_STAFF
 
+import { useVenues, useGateStaff } from '../../hooks/useAdmin';
+
 export default function AdminEventForm({ initialData = null, onSubmit }) {
     const { token } = useAuth();
     const [formData, setFormData] = useState({
@@ -32,7 +34,8 @@ export default function AdminEventForm({ initialData = null, onSubmit }) {
         }
     });
 
-    const [venues, setVenues] = useState([]);
+    const { data: venues = [] } = useVenues();
+    const { data: gateStaffList = [] } = useGateStaff();
     const [selectedVenue, setSelectedVenue] = useState(null);
     const [loading, setLoading] = useState(false);
 
@@ -40,53 +43,32 @@ export default function AdminEventForm({ initialData = null, onSubmit }) {
     const [selectedStaffIds, setSelectedStaffIds] = useState([]); // IDs of staff selected in dropdown
     const [isStaffDropdownOpen, setIsStaffDropdownOpen] = useState(false);
     const [assignedStaff, setAssignedStaff] = useState([]); // Array of staff objects with gateName
-    const [gateStaffList, setGateStaffList] = useState([]); // All available gate staff from backend
-
-    useEffect(() => {
-        const fetchVenues = async () => {
-            try {
-                const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/venue`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                const data = await response.json();
-                setVenues(data.venues || []);
-            } catch (error) {
-                console.error('Error fetching venues:', error);
-            }
-        };
-        fetchVenues();
-    }, []);
-
-    useEffect(() => {
-        const fetchGateStaff = async () => {
-            try {
-                const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/gate-staff`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                const data = await response.json();
-                setGateStaffList(data || []);
-            } catch (error) {
-                console.error('Error fetching gate staff:', error);
-            }
-        };
-        fetchGateStaff();
-    }, [token]);
 
     useEffect(() => {
         if (initialData) {
             setFormData({
-                ...initialData,
+                name: initialData.name || '',
+                description: initialData.description || '',
+                venueId: initialData.venueId?._id || initialData.venueId || '',
                 startDateTime: initialData.startDateTime ? new Date(initialData.startDateTime).toISOString().slice(0, 16) : '',
                 endDateTime: initialData.endDateTime ? new Date(initialData.endDateTime).toISOString().slice(0, 16) : '',
-                venueId: initialData.venueId?._id || initialData.venueId || '',
-                eventContactDetails: initialData.eventContactDetails || {
-                    coordinatorName: '',
-                    coordinatorPhone: '',
-                    coordinatorEmail: '',
-                    timings: ''
+                status: initialData.status || 'DRAFT',
+                category: initialData.category || 'MUSIC',
+                seatingType: initialData.seatingType || 'RESERVED',
+                currency: initialData.currency || 'R',
+                zones: initialData.zones || [],
+                likes: initialData.likes || 0,
+                ageLimit: initialData.ageLimit || '',
+                portraitImage: initialData.portraitImage || '',
+                landscapeImage: initialData.landscapeImage || '',
+                eventContactDetails: {
+                    coordinatorName: initialData.eventContactDetails?.coordinatorName || '',
+                    coordinatorPhone: initialData.eventContactDetails?.coordinatorPhone || '',
+                    coordinatorEmail: initialData.eventContactDetails?.coordinatorEmail || '',
+                    timings: initialData.eventContactDetails?.timings || ''
                 }
             });
-            // Initialize assigned staff if available in initialData (mocking for now since backend field might not exist yet)
+            // Initialize assigned staff if available in initialData
             setAssignedStaff(initialData.gateStaff || []);
             const venueId = initialData.venueId?._id || initialData.venueId;
             if (venueId && venues.length > 0) {

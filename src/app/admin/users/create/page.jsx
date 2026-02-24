@@ -7,11 +7,13 @@ import { ArrowLeft, UserPlus, Mail, Phone, Shield, Lock, User, Sparkles, Loader2
 import RoleGuard from "../../../components/RoleGuard";
 import Navbar from "../../../components/Navbar";
 import Footer from "@/app/components/Footer";
+import { useCreateStaff } from "../../../../hooks/useAdmin";
 
 export default function CreateStaffPage() {
     const router = useRouter();
     const { token } = useAuth();
-    const [loading, setLoading] = useState(false);
+    const createStaffMutation = useCreateStaff();
+
     const [formData, setFormData] = useState({
         name: "",
         email: "",
@@ -26,7 +28,6 @@ export default function CreateStaffPage() {
         { value: "TICKETING", label: "Ticketing Agent", icon: Sparkles, desc: "Manage tickets and bookings" },
         { value: "GATE", label: "Gate Staff", icon: Lock, desc: "Ticket verification and entry control" },
         { value: "MANAGEMENT", label: "Management", icon: User, desc: "View reports and event analytics" },
-        // { value: "CUSTOMER", label: "Platinum Member", icon: UserPlus, desc: "Personal account for premier access" }
     ];
 
     const handleChange = (e) => {
@@ -36,24 +37,10 @@ export default function CreateStaffPage() {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setLoading(true);
         setStatus({ type: null, message: "" });
 
         try {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/auth/create-staff`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${token}`,
-                },
-                body: JSON.stringify(formData),
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.message || "Failed to create staff member");
-            }
+            await createStaffMutation.mutateAsync(formData);
 
             setStatus({ type: "success", message: "Personnel record created successfully! Redirecting..." });
             setTimeout(() => {
@@ -62,10 +49,10 @@ export default function CreateStaffPage() {
         } catch (error) {
             console.error("Error creating staff:", error);
             setStatus({ type: "error", message: error.message });
-        } finally {
-            setLoading(false);
         }
     };
+
+    const loading = createStaffMutation.isPending;
 
     return (
         <RoleGuard allowedRoles={["ADMIN"]}>

@@ -1,6 +1,6 @@
 "use client";
 export const dynamic = "force-dynamic";
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
@@ -18,14 +18,7 @@ import {
 } from "lucide-react";
 import RoleGuard from "../components/RoleGuard";
 
-function getSafeId(data) {
-    if (!data) return null;
-    if (typeof data === "string") return data;
-    if (data?.$oid) return data.$oid;
-    if (data?._id) return typeof data._id === "string" ? data._id : getSafeId(data._id);
-    if (data?.id) return typeof data.id === "string" ? data.id : getSafeId(data.id);
-    return null;
-}
+import { useEventDetails, useEventSeats, useConfirmPurchase, getSafeId } from "../../hooks/useCustomer";
 
 function getSectionName(venue, sectionId) {
     if (!venue?.sections || !sectionId) return "";
@@ -41,61 +34,24 @@ function CheckoutContent() {
 
     const eventId = searchParams.get("eventId");
     const seatIdsParam = searchParams.get("seatIds");
+    const seatIds = useMemo(() =>
+        seatIdsParam ? seatIdsParam.split(",").map((s) => s.trim()).filter(Boolean) : []
+        , [seatIdsParam]);
 
-    const [event, setEvent] = useState(null);
-    const [venue, setVenue] = useState(null);
-    const [heldSeats, setHeldSeats] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [processing, setProcessing] = useState(false);
+    const { data: eventDetails, isLoading: eventLoading, error: eventError } = useEventDetails(eventId);
+    const { data: allSeats = [], isLoading: seatsLoading, error: seatsError } = useEventSeats(eventId);
+    const confirmPurchaseMutation = useConfirmPurchase();
+
     const [success, setSuccess] = useState(false);
 
-    useEffect(() => {
-        if (!eventId || !seatIdsParam) {
-            setError("Invalid checkout session. Please return to the seating selection.");
-            setLoading(false);
-            return;
-        }
-        const seatIds = seatIdsParam.split(",").map((s) => s.trim()).filter(Boolean);
-        if (seatIds.length === 0) {
-            setError("No seats selected. Please return to the seating selection.");
-            setLoading(false);
-            return;
-        }
+    const event = eventDetails?.event;
+    const venue = eventDetails?.venue;
 
-        const base = process.env.NEXT_PUBLIC_BACKEND_URI;
-        const fetchData = async () => {
-            try {
-                const eventRes = await fetch(`${base}/events/${eventId}`);
-                if (!eventRes.ok) throw new Error("Event not found");
-                const eventData = await eventRes.json();
-                setEvent(eventData);
-
-                const venueId = getSafeId(eventData.venueId) || getSafeId(eventData.venue);
-                if (venueId) {
-                    const venueRes = await fetch(`${base}/venue/${venueId}`);
-                    if (venueRes.ok) {
-                        const v = await venueRes.json();
-                        setVenue(v);
-                    }
-                }
-
-                const seatsRes = await fetch(`${base}/seats/event/${eventId}`);
-                if (!seatsRes.ok) throw new Error("Failed to fetch seats");
-                const seatsPayload = await seatsRes.json();
-                const allSeats = seatsPayload.seats || [];
-                const idSet = new Set(seatIds);
-                const held = allSeats.filter((s) => idSet.has(getSafeId(s._id)));
-                setHeldSeats(held);
-            } catch (err) {
-                console.error("Checkout fetch error:", err);
-                setError(err.message);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchData();
-    }, [eventId, seatIdsParam]);
+    const heldSeats = useMemo(() => {
+        if (!allSeats.length || !seatIds.length) return [];
+        const idSet = new Set(seatIds);
+        return allSeats.filter((s) => idSet.has(getSafeId(s._id)));
+    }, [allSeats, seatIds]);
 
     const calculateSubtotal = () => {
         if (!heldSeats.length) return 0;
@@ -110,38 +66,26 @@ function CheckoutContent() {
             alert("User not authenticated");
             return;
         }
-        setProcessing(true);
-        const base = process.env.NEXT_PUBLIC_BACKEND_URI;
-        const seatIds = heldSeats.map((s) => getSafeId(s._id)).filter(Boolean);
-        console.log("Confirming purchase for seats:", seatIds);
+
+        const seatIdsToConfirm = heldSeats.map((s) => getSafeId(s._id)).filter(Boolean);
+
         try {
-            const response = await fetch(`${base}/seats/confirm`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    seatIds,
-                    userId: userId,
-                })
+            await confirmPurchaseMutation.mutateAsync({
+                seatIds: seatIdsToConfirm,
+                userId: userId,
             });
-
-            if (!response.ok) {
-                const data = await response.json();
-                throw new Error(data.message || "Failed to confirm purchase");
-            }
-
             setSuccess(true);
             sessionStorage.removeItem("selectedSeats");
         } catch (err) {
-            alert(err.message);
-        } finally {
-            setProcessing(false);
+            alert(err.message || "Failed to confirm purchase");
         }
     };
 
-    if (loading) return (
+    const isLoading = eventLoading || seatsLoading;
+    const error = eventError?.message || seatsError?.message || (!eventId || !seatIdsParam ? "Invalid checkout session. Please return to the seating selection." : null);
+    const processing = confirmPurchaseMutation.isPending;
+
+    if (isLoading) return (
         <div className="min-h-screen bg-background">
             <Navbar />
             <div className="flex flex-col items-center justify-center h-[70vh]">
@@ -179,7 +123,7 @@ function CheckoutContent() {
                         </div>
                         <h1 className="text-4xl font-bold text-foreground mb-4">Booking Confirmed!</h1>
                         <p className="text-lg text-muted-foreground mb-12">
-                            Your tickets for <span className="font-bold text-primary">{event.name}</span> have been sent to your email.
+                            Your tickets for <span className="font-bold text-primary">{event.name}</span> have been successfully booked.
                         </p>
 
                         <div className="bg-card rounded-xl border border-border p-8 mb-12">

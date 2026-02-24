@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
+import { useUsers, useUpdateUserRole, useUpdateUserPermissions, useDeleteUser } from "../../../hooks/useAdmin";
 import { ArrowLeft, Search, Filter, Users as UsersIcon, Shield, ChevronLeft, ChevronRight, Activity, UserPlus, X, Crown, Sparkles, ChevronDown } from "lucide-react";
 import UserTable from "../../components/UserTable";
 import RoleGuard from "../../components/RoleGuard";
@@ -11,21 +12,22 @@ import Footer from "@/app/components/Footer";
 
 export default function UserManagementPage() {
   const router = useRouter();
-  const { user: authUser, token, loading: authLoading } = useAuth();
-  const [users, setUsers] = useState([]);
-  const [filteredUsers, setFilteredUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const { user: authUser, token } = useAuth();
+
+  const { data: usersData = [], isLoading, isError, error: fetchError } = useUsers();
+  const updateUserRoleMutation = useUpdateUserRole();
+  const updateUserPermissionsMutation = useUpdateUserPermissions();
+  const deleteUserMutation = useDeleteUser();
+
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("ALL");
   const [sortBy, setSortBy] = useState("date-desc");
-  const [currentUser, setCurrentUser] = useState(null);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const usersPerPage = 10;
 
-  //key value pair role:label
+  // Key value pair role:label
   const roles = [
     { role: "ALL", label: "All Roles" },
     { role: "CUSTOMER", label: "Customer" },
@@ -35,69 +37,22 @@ export default function UserManagementPage() {
     { role: "MANAGEMENT", label: "Management" }
   ];
 
+  // Reset to first page when filters change
   useEffect(() => {
-    // Get current logged-in user
-    const userData = localStorage.getItem("user") || sessionStorage.getItem("user");
-    if (userData) {
-      setCurrentUser(JSON.parse(userData));
-    }
+    setCurrentPage(1);
+  }, [searchQuery, roleFilter, sortBy]);
 
-    if (!authLoading && token) {
-      fetchUsers();
-    }
-  }, [authLoading, token]);
+  const filteredUsers = useMemo(() => {
+    // 1. Filter out currently logged-in user
+    const currentUserId = authUser ? authUser._id : null;
+    let filtered = usersData.filter(user => user._id !== currentUserId);
 
-  useEffect(() => {
-    filterUsers();
-    setCurrentPage(1); // Reset to first page when filters change
-  }, [searchQuery, roleFilter, sortBy, users]);
-
-  const fetchUsers = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/user`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch users');
-      }
-
-      const data = await response.json();
-
-      // Filter out the currently logged-in user
-      const currentUserId = authUser ? authUser._id : null;
-
-      const filteredData = data.filter(user => user._id !== currentUserId);
-
-      // Sort by creation date (newest first)
-      const sortedData = filteredData.sort((a, b) => {
-        return new Date(b.createdAt) - new Date(a.createdAt);
-      });
-
-      setUsers(sortedData);
-
-    } catch (err) {
-      console.error('Error fetching users:', err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const filterUsers = () => {
-    let filtered = [...users];
-
-    // Apply role filter
+    // 2. Apply role filter
     if (roleFilter !== "ALL") {
       filtered = filtered.filter(user => user.role === roleFilter);
     }
 
-    // Apply search filter (including month/date)
+    // 3. Apply search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       const monthNames = ["january", "february", "march", "april", "may", "june",
@@ -115,16 +70,16 @@ export default function UserManagementPage() {
           user.name?.toLowerCase().includes(query) ||
           user.email?.toLowerCase().includes(query) ||
           user._id?.toLowerCase().includes(query) ||
-          createMonth.includes(query) ||
-          createShortMonth.includes(query) ||
+          createMonth?.includes(query) ||
+          createShortMonth?.includes(query) ||
           createDay === query ||
           createYear === query
         );
       });
     }
 
-    // Apply sorting
-    filtered.sort((a, b) => {
+    // 4. Apply sorting
+    return filtered.sort((a, b) => {
       switch (sortBy) {
         case 'date-desc':
           return new Date(b.createdAt) - new Date(a.createdAt);
@@ -138,127 +93,23 @@ export default function UserManagementPage() {
           return 0;
       }
     });
-
-    setFilteredUsers(filtered);
-  };
+  }, [usersData, authUser, roleFilter, searchQuery, sortBy]);
 
   const handleRoleUpdate = async (userId, newRole) => {
     try {
-      // First, fetch the current user to get their existing role
-      const userResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/user/${userId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+      // Find the user in the already fetched usersData
+      const userToUpdate = usersData.find(u => u._id === userId);
+
+      if (!userToUpdate) {
+        throw new Error("User not found in local cache");
+      }
+
+      await updateUserRoleMutation.mutateAsync({
+        userId,
+        newRole,
+        oldRole: userToUpdate.role,
+        userToUpdate
       });
-      if (!userResponse.ok) {
-        throw new Error('Failed to fetch user');
-      }
-      const userToUpdate = await userResponse.json();
-      const oldRole = userToUpdate.role;
-
-      // Update the user role
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/user/${userId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ role: newRole }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to update role');
-      }
-
-      // Handle customer record creation/deletion based on role change
-      const isChangingToCustomer = oldRole !== 'CUSTOMER' && newRole === 'CUSTOMER';
-      const isChangingFromCustomer = oldRole === 'CUSTOMER' && newRole !== 'CUSTOMER';
-      const isChangingToGate = oldRole !== 'GATE' && newRole === 'GATE';
-      const isChangingFromGate = oldRole === 'GATE' && newRole !== 'GATE';
-
-      if (isChangingToCustomer) {
-        // Create customer record
-        const customerData = {
-          encryptedPII: {
-            name: userToUpdate.name,
-            email: userToUpdate.email,
-            phone: userToUpdate.phone || '',
-          },
-          userId: userToUpdate._id,
-          loyalty: {
-            verified: false,
-          },
-        };
-
-        const customerResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/customers`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify(customerData),
-        });
-
-        if (!customerResponse.ok) {
-          console.error('Failed to create customer record');
-        }
-      } else if (isChangingFromCustomer) {
-        // Find and delete customer record by email
-        const customerResponse = await fetch(
-          `${process.env.NEXT_PUBLIC_BACKEND_URI}/customers/email/${userToUpdate.email}`,
-          {
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
-          }
-        );
-
-        if (customerResponse.ok) {
-          const customer = await customerResponse.json();
-          if (customer && customer._id) {
-            const deleteResponse = await fetch(
-              `${process.env.NEXT_PUBLIC_BACKEND_URI}/customers/${customer._id}`,
-              {
-                method: 'DELETE',
-                headers: {
-                  'Authorization': `Bearer ${token}`
-                }
-              }
-            );
-
-            if (!deleteResponse.ok) {
-              console.error('Failed to delete customer record');
-            }
-          }
-        }
-      }
-
-      console.log('[handleRoleUpdate] oldRole:', oldRole, '| newRole:', newRole);
-      console.log('[handleRoleUpdate] isChangingToGate:', isChangingToGate, '| isChangingFromGate:', isChangingFromGate);
-
-      // Note: gate staff record creation on role→GATE is handled by the backend update() call above.
-      // We only need to handle deletion here as a safety net.
-      if (isChangingFromGate) {
-        // Find and delete gate staff record
-        console.log('[handleRoleUpdate] Deleting gate staff record for userId:', userToUpdate._id);
-        const gsResponse = await fetch(
-          `${process.env.NEXT_PUBLIC_BACKEND_URI}/gate-staff/user/${userToUpdate._id}`,
-          { headers: { 'Authorization': `Bearer ${token}` } }
-        );
-        if (gsResponse.ok) {
-          const gsRecords = await gsResponse.json();
-          console.log('[handleRoleUpdate] gate staff records to delete:', gsRecords.length);
-          for (const gs of gsRecords) {
-            await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/gate-staff/${gs._id}`, {
-              method: 'DELETE',
-              headers: { 'Authorization': `Bearer ${token}` }
-            });
-          }
-        }
-      }
-
-      // Refresh users list
-      await fetchUsers();
 
       return { success: true };
     } catch (error) {
@@ -269,21 +120,7 @@ export default function UserManagementPage() {
 
   const handlePermissionsUpdate = async (userId, newPermissions) => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/user/${userId}/permissions`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ permissions: newPermissions }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to update permissions');
-      }
-
-      // Refresh users list
-      await fetchUsers();
-
+      await updateUserPermissionsMutation.mutateAsync({ userId, newPermissions });
       return { success: true };
     } catch (error) {
       console.error('Error updating permissions:', error);
@@ -293,45 +130,7 @@ export default function UserManagementPage() {
 
   const handleDeleteUser = async (userId) => {
     try {
-      // Fetch user to check role before deleting
-      const userRes = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/user/${userId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (userRes.ok) {
-        const userToDelete = await userRes.json();
-
-        // If gate staff, delete gate staff record first
-        if (userToDelete.role === 'GATE') {
-          const gsResponse = await fetch(
-            `${process.env.NEXT_PUBLIC_BACKEND_URI}/gate-staff/user/${userId}`,
-            { headers: { 'Authorization': `Bearer ${token}` } }
-          );
-          if (gsResponse.ok) {
-            const gsRecords = await gsResponse.json();
-            for (const gs of gsRecords) {
-              await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/gate-staff/${gs._id}`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
-              });
-            }
-          }
-        }
-      }
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/user/${userId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.message || 'Failed to delete user');
-      }
-
-      // Refresh users list
-      await fetchUsers();
+      await deleteUserMutation.mutateAsync(userId);
       return { success: true };
     } catch (error) {
       console.error('Error deleting user:', error);
@@ -390,7 +189,7 @@ export default function UserManagementPage() {
     return pageNumbers;
   };
 
-  if (loading && users.length === 0) {
+  if (isLoading && usersData.length === 0) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
@@ -400,6 +199,8 @@ export default function UserManagementPage() {
       </div>
     );
   }
+
+  const PageError = isError ? (fetchError?.message || "Error loading users") : null;
 
   return (
     <RoleGuard allowedRoles={["ADMIN"]}>
@@ -430,7 +231,7 @@ export default function UserManagementPage() {
                     <h1 id="user-table-header" className="text-4xl md:text-5xl font-black text-foreground tracking-tight mb-2 flex flex-wrap items-center gap-4">
                       User Management
                       <span className="px-4 py-1.5 bg-primary/10 text-primary rounded-full text-base font-bold border border-primary/20">
-                        {users.length} Total
+                        {usersData.length} Total
                       </span>
                     </h1>
                   </div>
@@ -452,12 +253,12 @@ export default function UserManagementPage() {
 
           {/* Elegant Stats Grid */}
           <div className="grid grid-cols-2 lg:grid-cols-6 gap-4 mb-10">
-            <MiniStat label="Active" count={users.filter(u => u.isActive).length} color="accent" icon={<Activity className="w-3 h-3" />} />
-            <MiniStat label="Customers" count={users.filter(u => u.role === 'CUSTOMER').length} color="primary" />
-            <MiniStat label="Admins" count={users.filter(u => u.role === 'ADMIN').length} color="primary" />
-            <MiniStat label="Ticketing" count={users.filter(u => u.role === 'TICKETING').length} color="accent" />
-            <MiniStat label="Gate Staff" count={users.filter(u => u.role === 'GATE').length} color="accent" />
-            <MiniStat label="Management" count={users.filter(u => u.role === 'MANAGEMENT').length} color="primary" />
+            <MiniStat label="Active" count={usersData.filter(u => u.isActive).length} color="accent" icon={<Activity className="w-3 h-3" />} />
+            <MiniStat label="Customers" count={usersData.filter(u => u.role === 'CUSTOMER').length} color="primary" />
+            <MiniStat label="Admins" count={usersData.filter(u => u.role === 'ADMIN').length} color="primary" />
+            <MiniStat label="Ticketing" count={usersData.filter(u => u.role === 'TICKETING').length} color="accent" />
+            <MiniStat label="Gate Staff" count={usersData.filter(u => u.role === 'GATE').length} color="accent" />
+            <MiniStat label="Management" count={usersData.filter(u => u.role === 'MANAGEMENT').length} color="primary" />
           </div>
 
           {/* Filters & Search */}
@@ -538,10 +339,10 @@ export default function UserManagementPage() {
           </div>
 
           {/* Error Display */}
-          {error && (
+          {(PageError || fetchError) && (
             <div className="bg-destructive/10 border-2 border-destructive/20 text-destructive px-6 py-4 rounded-2xl mb-8 flex items-center gap-3">
               <div className="w-2 h-2 bg-destructive rounded-full animate-pulse"></div>
-              <p className="font-bold text-sm">{error}</p>
+              <p className="font-bold text-sm">{PageError || fetchError.message}</p>
             </div>
           )}
 

@@ -2,12 +2,18 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
+import {
+  useLogin,
+  useSignup,
+  useRequestOtp,
+  useVerifyOtp
+} from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Crown, Shield } from "lucide-react";
 
 export default function AuthLoginPage() {
-  const { user, loading, login, signup, requestOtp, verifyOtp } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [isLogin, setIsLogin] = useState(true);
   const [useOtp, setUseOtp] = useState(true);
@@ -23,14 +29,24 @@ export default function AuthLoginPage() {
     role: "CUSTOMER",
   });
   const [error, setError] = useState("");
-  const [otpLoading, setOtpLoading] = useState(false);
+
+  // Mutations
+  const loginMutation = useLogin();
+  const signupMutation = useSignup();
+  const requestOtpMutation = useRequestOtp();
+  const verifyOtpMutation = useVerifyOtp();
+
+  const isPending = loginMutation.isPending ||
+    signupMutation.isPending ||
+    requestOtpMutation.isPending ||
+    verifyOtpMutation.isPending;
 
   // If already logged in, redirect to home
   useEffect(() => {
-    if (user && !loading) {
+    if (user && !authLoading) {
       router.replace("/");
     }
-  }, [user, loading, router]);
+  }, [user, authLoading, router]);
 
   const handleChange = (e) => {
     const value = e.target.name === "email" ? e.target.value.toLowerCase() : e.target.value;
@@ -75,17 +91,20 @@ export default function AuthLoginPage() {
       return;
     }
 
-    let res;
-    if (isLogin) {
-      res = await login(formData.email, formData.password, rememberMe);
-    } else {
-      const { confirmPassword, ...signupData } = formData;
-      res = await signup(signupData);
-    }
-    if (!res.success) {
-      setError(res.error);
-    } else {
+    try {
+      if (isLogin) {
+        await loginMutation.mutateAsync({
+          email: formData.email,
+          password: formData.password,
+          rememberMe
+        });
+      } else {
+        const { confirmPassword, ...signupData } = formData;
+        await signupMutation.mutateAsync(signupData);
+      }
       router.push("/");
+    } catch (err) {
+      setError(err.message);
     }
   };
 
@@ -103,14 +122,12 @@ export default function AuthLoginPage() {
       return;
     }
 
-    setOtpLoading(true);
-    const res = await requestOtp(formData.email);
-    setOtpLoading(false);
-    if (res.success) {
+    try {
+      await requestOtpMutation.mutateAsync(formData.email);
       setOtpStep("verify");
       setFormData((prev) => ({ ...prev, otp: "" }));
-    } else {
-      setError(res.error);
+    } catch (err) {
+      setError(err.message);
     }
   };
 
@@ -120,20 +137,19 @@ export default function AuthLoginPage() {
       setError("Enter the code from your email");
       return;
     }
-    setOtpLoading(true);
-    const res = await verifyOtp(
-      formData.email,
-      formData.otp,
-      formData.name,
-      formData.phone,
-      formData.role,
-      rememberMe
-    );
-    setOtpLoading(false);
-    if (!res.success) {
-      setError(res.error);
-    } else {
+
+    try {
+      await verifyOtpMutation.mutateAsync({
+        email: formData.email,
+        otp: formData.otp,
+        name: formData.name,
+        phone: formData.phone,
+        role: formData.role,
+        rememberMe
+      });
       router.push("/");
+    } catch (err) {
+      setError(err.message);
     }
   };
 
@@ -142,7 +158,7 @@ export default function AuthLoginPage() {
     setError("");
   };
 
-  if (loading) {
+  if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
@@ -300,10 +316,10 @@ export default function AuthLoginPage() {
                   </div>
                   <button
                     onClick={handleSendOtp}
-                    disabled={otpLoading}
+                    disabled={isPending}
                     className="w-full flex justify-center py-4 px-4 border-2 border-primary rounded-xl shadow-md shadow-primary/30 text-sm font-black text-primary-foreground bg-gradient-to-r from-primary to-primary-dark hover:from-primary-light hover:to-primary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-all transform active:scale-[0.98] disabled:opacity-50 uppercase tracking-wider"
                   >
-                    {otpLoading ? "Sending Code..." : "Send Verification Code"}
+                    {requestOtpMutation.isPending ? "Sending Code..." : "Send Verification Code"}
                   </button>
                 </>
               ) : (
@@ -344,10 +360,10 @@ export default function AuthLoginPage() {
 
                   <button
                     onClick={handleVerifyOtp}
-                    disabled={otpLoading || formData.otp.length < 6}
+                    disabled={isPending || formData.otp.length < 6}
                     className="w-full flex justify-center py-4 px-4 border-2 border-primary rounded-xl shadow-md shadow-primary/30 text-sm font-black text-primary-foreground bg-gradient-to-r from-primary to-primary-dark hover:from-primary-light hover:to-primary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-all transform active:scale-[0.98] disabled:opacity-50 uppercase tracking-wider"
                   >
-                    {otpLoading ? "Verifying..." : "Verify & Sign In"}
+                    {verifyOtpMutation.isPending ? "Verifying..." : "Verify & Sign In"}
                   </button>
                 </>
               )}
@@ -402,6 +418,20 @@ export default function AuthLoginPage() {
                 />
               </div>
 
+              {!isLogin && (
+                <div>
+                  <label className="block text-xs font-black text-primary uppercase tracking-widest mb-2">Confirm Password</label>
+                  <input
+                    type="password"
+                    name="confirmPassword"
+                    value={formData.confirmPassword}
+                    onChange={handleChange}
+                    placeholder="••••••••"
+                    className="block w-full rounded-xl border-2 border-primary/20 bg-card-elevated text-foreground placeholder-muted-foreground shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 sm:text-sm p-4 transition-all"
+                  />
+                </div>
+              )}
+
               {isLogin && (
                 <label className="flex items-center gap-3 cursor-pointer group select-none">
                   <div className="relative">
@@ -426,9 +456,10 @@ export default function AuthLoginPage() {
               <div className="pt-2">
                 <button
                   onClick={handlePasswordSubmit}
-                  className="w-full flex justify-center py-4 px-4 border-2 border-primary rounded-xl shadow-md shadow-primary/30 text-sm font-black text-primary-foreground bg-gradient-to-r from-primary to-primary-dark hover:from-primary-light hover:to-primary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-all transform active:scale-[0.98] uppercase tracking-wider"
+                  disabled={isPending}
+                  className="w-full flex justify-center py-4 px-4 border-2 border-primary rounded-xl shadow-md shadow-primary/30 text-sm font-black text-primary-foreground bg-gradient-to-r from-primary to-primary-dark hover:from-primary-light hover:to-primary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-all transform active:scale-[0.98] disabled:opacity-50 uppercase tracking-wider"
                 >
-                  {isLogin ? "Sign In" : "Create Account"}
+                  {isPending ? "Processing..." : (isLogin ? "Sign In" : "Create Account")}
                 </button>
               </div>
             </div>

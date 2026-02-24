@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../context/AuthContext';
+import { useEvents, useDeleteEvent } from '../../../hooks/useAdmin';
 import { Plus, Edit2, Trash2, MapPin, Calendar as CalendarIcon, Users, Crown, Sparkles, ArrowRight, ArrowLeft, Search, Filter, ChevronDown, X, UsersIcon, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
 import RoleGuard from "../../components/RoleGuard";
 import Navbar from "../../components/Navbar";
@@ -11,53 +12,32 @@ import DeleteConfirmationDialog from "../../components/DeleteConfirmationDialog"
 import { formatDate } from "@/app/utils/dateUtils";
 
 export default function AdminEventsPage() {
-    const [events, setEvents] = useState([]);
-    const [filteredEvents, setFilteredEvents] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const { token } = useAuth();
+    const router = useRouter();
+
+    const { data: eventsData = [], isLoading, isError } = useEvents();
+    const deleteEventMutation = useDeleteEvent();
+
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState('ALL');
     const [categoryFilter, setCategoryFilter] = useState('ALL');
     const [sortBy, setSortBy] = useState('default');
-    const { token, loading: authLoading } = useAuth();
-    const router = useRouter();
 
     // Delete confirmation state
     const [selectedEvent, setSelectedEvent] = useState(null);
     const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-    const [isDeleting, setIsDeleting] = useState(false);
 
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1);
     const eventsPerPage = 8;
 
+    // Reset to first page when filtering/sorting changes
     useEffect(() => {
-        const fetchEvents = async () => {
-            try {
-                const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events?role=ADMIN`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                const data = await response.json();
+        setCurrentPage(1);
+    }, [searchQuery, statusFilter, categoryFilter, sortBy]);
 
-                const uniqueEvents = Array.isArray(data)
-                    ? data.filter((event, index, self) =>
-                        index === self.findIndex((e) => e._id === event._id)
-                    )
-                    : [];
-
-                setEvents(uniqueEvents);
-            } catch (error) {
-                console.error('Error fetching events:', error);
-            } finally {
-                setLoading(false);
-            }
-        };
-        if (!authLoading && token) {
-            fetchEvents();
-        }
-    }, [authLoading, token]);
-
-    useEffect(() => {
-        let result = [...events];
+    const filteredEvents = useMemo(() => {
+        let result = [...eventsData];
 
         // Search filter (including month/date)
         if (searchQuery.trim()) {
@@ -77,8 +57,8 @@ export default function AdminEventsPage() {
                     event.name?.toLowerCase().includes(query) ||
                     event.venueId?.name?.toLowerCase().includes(query) ||
                     event.venueId?.city?.toLowerCase().includes(query) ||
-                    eventMonth.includes(query) ||
-                    eventShortMonth.includes(query) ||
+                    eventMonth?.includes(query) ||
+                    eventShortMonth?.includes(query) ||
                     eventDay === query ||
                     eventYear === query
                 );
@@ -143,9 +123,8 @@ export default function AdminEventsPage() {
             }
         });
 
-        setFilteredEvents(result);
-        setCurrentPage(1); // Reset to first page when filtering/sorting changes
-    }, [events, searchQuery, statusFilter, categoryFilter, sortBy]);
+        return result;
+    }, [eventsData, searchQuery, statusFilter, categoryFilter, sortBy]);
 
     // Get current events (pagination logic)
     const indexOfLastEvent = currentPage * eventsPerPage;
@@ -195,25 +174,13 @@ export default function AdminEventsPage() {
     const handleConfirmDelete = async () => {
         if (!selectedEvent) return;
 
-        setIsDeleting(true);
         try {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events/${selectedEvent._id}`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-
-            if (response.ok) {
-                setEvents(events.filter(event => event._id !== selectedEvent._id));
-                setShowDeleteDialog(false);
-                setSelectedEvent(null);
-            } else {
-                alert('Failed to delete event');
-            }
+            await deleteEventMutation.mutateAsync(selectedEvent._id);
+            setShowDeleteDialog(false);
+            setSelectedEvent(null);
         } catch (error) {
             console.error('Error deleting event:', error);
             alert('An error occurred while deleting the event');
-        } finally {
-            setIsDeleting(false);
         }
     };
 
@@ -276,12 +243,22 @@ export default function AdminEventsPage() {
     };
 
 
-    if (loading) {
+    if (isLoading && eventsData.length === 0) {
         return (
             <div className="min-h-screen bg-background p-6 flex items-center justify-center">
                 <div className="text-center">
                     <div className="inline-block animate-spin rounded-full h-16 w-16 border-4 border-primary/20 border-t-primary"></div>
-                    <p className="mt-6 text-foreground font-semibold text-lg">Loading Imperial Events...</p>
+                    <p className="mt-6 text-foreground font-semibold text-lg">Loading Events Registry...</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (isError) {
+        return (
+            <div className="min-h-screen bg-background p-6 flex items-center justify-center">
+                <div className="text-center text-red-500 font-bold">
+                    Error loading events. Please try again later.
                 </div>
             </div>
         );
@@ -322,9 +299,9 @@ export default function AdminEventsPage() {
                             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
                                 <div className="space-y-4">
                                     <h1 id="events-registry-header" className="text-4xl md:text-5xl font-black text-foreground tracking-tight mb-2 flex flex-wrap items-center gap-4">
-                                        Event Mangement
+                                        Event Management
                                         <span className="px-4 py-1.5 bg-primary/10 text-primary rounded-full text-base font-bold border border-primary/20">
-                                            {events.length} Total
+                                            {eventsData.length} Total
                                         </span>
                                     </h1>
                                 </div>
@@ -424,8 +401,8 @@ export default function AdminEventsPage() {
                             <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
                                 {eventStatuses.map(tab => {
                                     const count = tab.id === 'ALL'
-                                        ? events.length
-                                        : events.filter(e => e.status === tab.id).length;
+                                        ? eventsData.length
+                                        : eventsData.filter(e => e.status === tab.id).length;
 
                                     return (
                                         <button
@@ -638,7 +615,7 @@ export default function AdminEventsPage() {
                 title="Cancel & Remove Event"
                 message="Are you sure you want to remove this event from the Event Go? This will cancel all associated bookings and cannot be undone."
                 itemName={selectedEvent?.name}
-                loading={isDeleting}
+                loading={deleteEventMutation.isPending}
             />
         </RoleGuard>
     );

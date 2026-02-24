@@ -2,6 +2,7 @@
 
 import { useState, Suspense } from "react";
 import { useAuth } from "../../../context/AuthContext";
+import { useResetPassword } from "../../../hooks/useAuth";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Shield, ArrowLeft, CheckCircle, Eye, EyeOff } from "lucide-react";
@@ -9,7 +10,7 @@ import { Shield, ArrowLeft, CheckCircle, Eye, EyeOff } from "lucide-react";
 function ResetPasswordForm() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const { resetPassword } = useAuth();
+    const resetPasswordMutation = useResetPassword();
 
     const [email, setEmail] = useState(searchParams.get("email") || "");
     const [otp, setOtp] = useState("");
@@ -42,18 +43,20 @@ function ResetPasswordForm() {
             return;
         }
 
-        setStatus("loading");
-        const res = await resetPassword(email.trim().toLowerCase(), otp, newPassword);
-
-        if (res.success) {
+        try {
+            await resetPasswordMutation.mutateAsync({
+                email: email.trim().toLowerCase(),
+                otp,
+                newPassword
+            });
             setStatus("success");
             setMessage("Password reset successfully. Redirecting to login...");
             setTimeout(() => {
                 router.push("/auth/login");
             }, 3000);
-        } else {
+        } catch (err) {
             setStatus("error");
-            setMessage(res.error || "Reset failed. Please try again.");
+            setMessage(err.message || "Reset failed. Please try again.");
         }
     };
 
@@ -154,10 +157,10 @@ function ResetPasswordForm() {
             <div className="pt-2">
                 <button
                     type="submit"
-                    disabled={status === "loading"}
+                    disabled={resetPasswordMutation.isPending}
                     className="w-full flex justify-center py-4 px-4 border-2 border-primary rounded-xl shadow-md shadow-primary/30 text-sm font-black text-primary-foreground bg-gradient-to-r from-primary to-primary-dark hover:from-primary-light hover:to-primary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-all transform active:scale-[0.98] disabled:opacity-50 uppercase tracking-wider"
                 >
-                    {status === "loading" ? "Resetting Password..." : "Set New Password"}
+                    {resetPasswordMutation.isPending ? "Resetting Password..." : "Set New Password"}
                 </button>
             </div>
 

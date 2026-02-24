@@ -1,58 +1,22 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { ArrowLeft, Edit2, Calendar, MapPin, DollarSign, Users, Image, Info, Phone, Mail, Clock } from 'lucide-react';
 import RoleGuard from '@/app/components/RoleGuard';
 import Navbar from '@/app/components/Navbar';
 
+import { useAdminEvent, useEventAssignments } from '@/hooks/useAdmin';
+
 export default function EventDetailsPage({ params }) {
     const { id } = React.use(params);
     const router = useRouter();
-    const { token } = useAuth();
-    const [event, setEvent] = useState(null);
-    const [assignments, setAssignments] = useState([]);
-    const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        if (!token) return;
+    const { data: event, isLoading: eventLoading, isError: eventError } = useAdminEvent(id);
+    const { data: assignments = [], isLoading: assignmentsLoading } = useEventAssignments(id);
 
-        const fetchEventAndStaff = async () => {
-            try {
-                // Fetch Event
-                const eventResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events/${id}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-
-                if (eventResponse.ok) {
-                    const eventData = await eventResponse.json();
-                    setEvent(eventData);
-                } else {
-                    console.error('Failed to fetch event');
-                    alert('Event not found');
-                    router.push('/admin/events');
-                    return;
-                }
-
-                // Fetch Gate Staff Assignments
-                const assignmentsResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/gatestaffassignment/event/${id}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-
-                if (assignmentsResponse.ok) {
-                    const assignmentsData = await assignmentsResponse.json();
-                    setAssignments(assignmentsData);
-                }
-
-            } catch (error) {
-                console.error('Error fetching event details:', error);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchEventAndStaff();
-    }, [id, router, token]);
+    const loading = eventLoading || assignmentsLoading;
 
     if (loading) {
         return (
@@ -62,6 +26,22 @@ export default function EventDetailsPage({ params }) {
                         <div className="inline-block animate-spin rounded-full h-16 w-16 border-4 border-primary/20 border-t-primary"></div>
                         <p className="mt-6 text-foreground font-semibold text-lg">Loading Event...</p>
                     </div>
+                </div>
+            </RoleGuard>
+        );
+    }
+
+    if (eventError || !event) {
+        return (
+            <RoleGuard allowedRoles={["ADMIN"]}>
+                <div className="min-h-screen bg-background p-6 flex flex-col items-center justify-center gap-4">
+                    <p className="text-destructive font-bold text-xl">Event not found or failed to load.</p>
+                    <button
+                        onClick={() => router.push('/admin/events')}
+                        className="px-6 py-2 bg-primary text-primary-foreground rounded-lg font-bold"
+                    >
+                        Back to Events
+                    </button>
                 </div>
             </RoleGuard>
         );
@@ -159,7 +139,7 @@ export default function EventDetailsPage({ params }) {
                                                             <div className="text-foreground">
                                                                 {assign.userId?.phone}
                                                                 <span className="text-sm text-foreground"> . {assign.userId?.email}</span>
-                                                                </div>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                     <div className="text-right">
@@ -238,7 +218,7 @@ export default function EventDetailsPage({ params }) {
                                     )}
                                 </div>
                             </div>
-                            
+
                             {/* Contact Info */}
                             <div className="bg-card rounded-3xl border border-border p-6 shadow-sm">
                                 <h3 className="font-bold text-foreground mb-4 flex items-center gap-2">
