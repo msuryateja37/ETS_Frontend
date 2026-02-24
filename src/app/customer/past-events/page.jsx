@@ -1,7 +1,7 @@
 "use client";
 export const dynamic = "force-dynamic";
 
-import { useState, useEffect, memo, useMemo } from "react";
+import { useState, memo, useMemo } from "react";
 import { Calendar, MapPin, Heart, ChevronRight, Crown, ArrowLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Navbar from "../../components/Navbar";
@@ -10,112 +10,34 @@ import { useAuth } from "@/context/AuthContext";
 import { formatLikes } from "../../utils/formatLikes";
 import { formatDate } from "../../utils/dateUtils";
 
+import { usePastEvents, useCustomerProfile, useToggleLike, getSafeId } from "../../../hooks/useCustomer";
+
 export default function PastEventsPage() {
     const { user, token } = useAuth();
     const router = useRouter();
-    const [events, setEvents] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [likedEvents, setLikedEvents] = useState(new Set());
-    const [likingInProgress, setLikingInProgress] = useState(new Set());
-    const [customerId, setCustomerId] = useState(null);
+
+    const { data: events = [], isLoading: eventsLoading, error: eventsError } = usePastEvents();
+    const { data: customerData, isLoading: customerLoading } = useCustomerProfile(getSafeId(user));
+    const toggleLikeMutation = useToggleLike();
+
+    const likedEvents = useMemo(() => new Set(customerData?.likedEvents?.map(id => id.toString()) || []), [customerData]);
+
     const [searchQuery, setSearchQuery] = useState("");
-
-    useEffect(() => {
-        fetchPastEvents();
-        if (user && token) {
-            fetchCustomerData();
-        }
-    }, [user, token]);
-
-    const fetchPastEvents = async () => {
-        try {
-            setLoading(true);
-            setError(null);
-
-            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events?timeframe=past`);
-            if (!response.ok) {
-                throw new Error('Failed to fetch past events');
-            }
-
-            const data = await response.json();
-            // Sort events by date in descending order (latest first)
-            const sortedEvents = (data || []).sort((a, b) =>
-                new Date(b.startDateTime) - new Date(a.startDateTime)
-            );
-            setEvents(sortedEvents);
-        } catch (err) {
-            console.error('Error fetching past events:', err);
-            setError(err.message);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const fetchCustomerData = async () => {
-        try {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/customers/user/${user._id}`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-            if (response.ok) {
-                const customerData = await response.json();
-                setCustomerId(customerData._id);
-                const likedEventIds = new Set(customerData.likedEvents?.map(id => id.toString()) || []);
-                setLikedEvents(likedEventIds);
-            }
-        } catch (err) {
-            console.error('Error fetching customer data:', err);
-        }
-    };
 
     const handleLikeToggle = async (eventId, e) => {
         e.stopPropagation();
-        if (!user || !customerId || likingInProgress.has(eventId)) return;
+        if (!user || !customerData?._id) return;
 
         try {
-            setLikingInProgress(prev => new Set([...prev, eventId]));
-            const isLiked = likedEvents.has(eventId);
-            const endpoint = `${process.env.NEXT_PUBLIC_BACKEND_URI}/customers/${customerId}/like-event`;
-            const method = isLiked ? 'DELETE' : 'POST';
-
-            const response = await fetch(endpoint, {
-                method: method,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({ eventId: eventId })
+            await toggleLikeMutation.mutateAsync({
+                customerId: customerData._id,
+                eventId,
+                isLiked: likedEvents.has(eventId)
             });
-
-            if (response.ok) {
-                setLikedEvents(prev => {
-                    const newSet = new Set(prev);
-                    if (isLiked) newSet.delete(eventId);
-                    else newSet.add(eventId);
-                    return newSet;
-                });
-
-                setEvents(prevEvents =>
-                    prevEvents.map(event =>
-                        event._id === eventId
-                            ? { ...event, likes: (event.likes || 0) + (isLiked ? -1 : 1) }
-                            : event
-                    )
-                );
-            }
         } catch (err) {
             console.error('Error toggling like:', err);
-        } finally {
-            setLikingInProgress(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(eventId);
-                return newSet;
-            });
         }
     };
-
 
     const filteredEvents = events.filter(event => {
         const searchLower = searchQuery.toLowerCase();
@@ -131,6 +53,9 @@ export default function PastEventsPage() {
     const handleEventClick = (eventId) => {
         router.push(`/events/${eventId}`);
     };
+
+    const loading = eventsLoading || customerLoading;
+    const error = eventsError?.message;
 
     if (loading) {
         return (
@@ -192,7 +117,7 @@ export default function PastEventsPage() {
                                     onClick={() => handleEventClick(event._id)}
                                     onLike={(e) => handleLikeToggle(event._id, e)}
                                     isLiked={likedEvents.has(event._id)}
-                                    isLiking={likingInProgress.has(event._id)}
+                                    isLiking={toggleLikeMutation.isPending}
                                     formatDate={formatDate}
                                 />
                             ))}

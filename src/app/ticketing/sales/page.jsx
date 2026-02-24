@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
+import { useEvents } from "../../../hooks/useAdmin";
 import {
     Search,
     Ticket,
@@ -26,31 +27,15 @@ export default function TicketSalesPage() {
     );
 }
 
+
 function TicketSalesContent() {
     const { token } = useAuth();
     const [step, setStep] = useState(1); // 1: Event, 2: Seats/Details, 3: Customer, 4: Payment, 5: Confirmation
-    const [events, setEvents] = useState([]);
-    const [selectedEvent, setSelectedEvent] = useState(null);
-    const [loading, setLoading] = useState(false);
-    const [searchQuery, setSearchQuery] = useState("");
 
-    useEffect(() => {
-        const fetchEvents = async () => {
-            setLoading(true);
-            try {
-                const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                const data = await res.json();
-                setEvents(data || []);
-            } catch (err) {
-                console.error("Failed to fetch events:", err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchEvents();
-    }, []);
+    const { data: events = [], isLoading: loading, isError } = useEvents();
+
+    const [selectedEvent, setSelectedEvent] = useState(null);
+    const [searchQuery, setSearchQuery] = useState("");
 
     const filteredEvents = events.filter(e =>
         e.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -99,7 +84,12 @@ function TicketSalesContent() {
                                 </div>
                             </div>
 
-                            {loading ? (
+                            {isError ? (
+                                <div className="py-20 flex flex-col items-center justify-center text-red-500">
+                                    <AlertCircle className="mb-4" size={40} />
+                                    <p>Failed to load events. Please try again.</p>
+                                </div>
+                            ) : loading ? (
                                 <div className="py-20 flex flex-col items-center justify-center text-slate-400">
                                     <Loader2 className="animate-spin mb-4" size={40} />
                                     <p>Loading active events...</p>

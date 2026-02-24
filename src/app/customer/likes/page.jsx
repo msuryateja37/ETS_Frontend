@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Heart, Calendar, MapPin, Ticket, HeartOff, ArrowLeft, ChevronRight, Sparkles, Crown } from "lucide-react";
 import Navbar from "@/app/components/Navbar";
 import { formatDate } from "@/app/utils/dateUtils";
@@ -10,164 +10,40 @@ import { useRouter } from "next/navigation";
 import { formatLikes } from "../../utils/formatLikes";
 import Footer from "@/app/components/Footer";
 
+import { useCustomerProfile, useLikedEvents, useToggleLike, getSafeId } from "../../../hooks/useCustomer";
+
 export default function LikesPage() {
   const { user, token } = useAuth();
   const router = useRouter();
-  const [customerId, setCustomerId] = useState(null);
-  const [likedEventIds, setLikedEventIds] = useState([]);
-  const [likedEvents, setLikedEvents] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [unlikingInProgress, setUnlikingInProgress] = useState(new Set());
+
+  const { data: customerData, isLoading: customerLoading, error: customerError } = useCustomerProfile(getSafeId(user));
+  const likedEventIds = customerData?.likedEvents || [];
+  const { data: likedEvents = [], isLoading: eventsLoading, error: eventsError } = useLikedEvents(likedEventIds);
+  const toggleLikeMutation = useToggleLike();
+
   const [searchQuery, setSearchQuery] = useState("");
 
-  useEffect(() => {
-    if (user && token) {
-      fetchCustomerData();
-    }
-  }, [user, token]);
-
-  useEffect(() => {
-    if (likedEventIds.length > 0) {
-      fetchLikedEvents();
-    } else {
-      setIsLoading(false);
-    }
-  }, [likedEventIds]);
-
-  const fetchCustomerData = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      // Validate token exists before making request
-      if (!token || token.trim() === '') {
-        console.warn('No valid token available');
-        setError('Authentication token is not available. Please sign in again.');
-        setIsLoading(false);
-        return;
-      }
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/customers/user/${user._id}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          console.warn('Unauthorized access - session expired or invalid token');
-          setError('Your session has expired. Please sign in again.');
-          // Clear auth state
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          sessionStorage.removeItem('token');
-          sessionStorage.removeItem('user');
-          setIsLoading(false);
-          return;
-        }
-        if (response.status === 404) {
-          console.log('No customer record found for this user');
-          setIsLoading(false);
-          return;
-        }
-        const errorData = await response.json().catch(() => ({ message: 'Failed to fetch customer data' }));
-        throw new Error(errorData.message || 'Failed to fetch customer data');
-      }
-
-      const customerData = await response.json();
-      setCustomerId(customerData._id);
-      const eventIds = customerData.likedEvents || [];
-      setLikedEventIds(eventIds);
-
-    } catch (err) {
-      console.error('Error fetching customer data:', err);
-      setError(err.message);
-      setIsLoading(false);
-    }
-  };
-
-  const fetchLikedEvents = async () => {
-    try {
-      setIsLoading(true);
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events/batch`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ ids: likedEventIds })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch liked events');
-      }
-
-      const events = await response.json();
-
-      // Sort events by date (ascending)
-      const sortedEvents = [...events].sort((a, b) => {
-        const dateA = new Date(a.startDateTime || a.startDate);
-        const dateB = new Date(b.startDateTime || b.startDate);
-        return dateA - dateB;
-      });
-
-      setLikedEvents(sortedEvents);
-
-    } catch (err) {
-      console.error('Error fetching liked events:', err);
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const isLoading = customerLoading || eventsLoading;
+  const error = customerError?.message || eventsError?.message;
 
   const handleUnlike = async (eventId, e) => {
     e.preventDefault();
     e.stopPropagation();
 
-    if (!customerId) {
+    if (!customerData?._id) {
       alert('Unable to process unlike. Please refresh the page and try again.');
       return;
     }
 
-    if (unlikingInProgress.has(eventId)) {
-      return;
-    }
-
     try {
-      setUnlikingInProgress(prev => new Set([...prev, eventId]));
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_BACKEND_URI}/customers/${customerId}/like-event`,
-        {
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({ eventId: eventId })
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: 'Failed to unlike event' }));
-        throw new Error(errorData.message || 'Failed to unlike event');
-      }
-
-      setLikedEvents(prev => prev.filter(event => event._id !== eventId));
-      setLikedEventIds(prev => prev.filter(id => id !== eventId));
-
+      await toggleLikeMutation.mutateAsync({
+        customerId: customerData._id,
+        eventId,
+        isLiked: true // indicates it is currently liked, so should be removed
+      });
     } catch (err) {
       console.error('Error unliking event:', err);
       alert(err.message || 'Failed to unlike event');
-    } finally {
-      setUnlikingInProgress(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(eventId);
-        return newSet;
-      });
     }
   };
 
@@ -175,14 +51,13 @@ export default function LikesPage() {
     router.push(`/events/${eventId}`);
   };
 
-
   const filteredEvents = likedEvents.filter(event => {
     const searchLower = searchQuery.toLowerCase();
     const dateStr = formatDate(event.startDateTime || event.startDate).toLowerCase();
     return (
       event.name?.toLowerCase().includes(searchLower) ||
       event.category?.toLowerCase().includes(searchLower) ||
-      event.venue?.name?.toLowerCase().includes(searchLower) ||
+      (event.venue?.name?.toLowerCase().includes(searchLower)) ||
       dateStr.includes(searchLower)
     );
   });
@@ -328,12 +203,16 @@ export default function LikesPage() {
 
                       <button
                         onClick={(e) => handleUnlike(event._id, e)}
-                        disabled={unlikingInProgress.has(event._id)}
-                        className={`p-2.5 rounded-full backdrop-blur-md transition-all shadow-lg bg-gradient-to-r from-primary to-primary-dark text-primary-foreground border-2 border-primary ${unlikingInProgress.has(event._id) ? 'opacity-70 cursor-wait' : 'hover:scale-110 active:scale-95'
+                        disabled={toggleLikeMutation.isPending}
+                        className={`p-2.5 rounded-full backdrop-blur-md transition-all shadow-lg bg-gradient-to-r from-primary to-primary-dark text-primary-foreground border-2 border-primary ${toggleLikeMutation.isPending ? 'opacity-70 cursor-wait' : 'hover:scale-110 active:scale-95'
                           }`}
                         title="Remove from likes"
                       >
-                        <Heart className="w-4 h-4 fill-current" />
+                        {toggleLikeMutation.isPending ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Heart className="w-4 h-4 fill-current" />
+                        )}
                       </button>
                     </div>
 

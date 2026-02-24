@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Star, Calendar, MapPin, Heart, StarOff, ArrowLeft, ChevronRight, Sparkles, Crown } from "lucide-react";
 import Navbar from "@/app/components/Navbar";
 import { formatDate } from "@/app/utils/dateUtils";
@@ -10,164 +10,41 @@ import { useRouter } from "next/navigation";
 import { formatLikes } from "../../utils/formatLikes";
 import Footer from "@/app/components/Footer";
 
+import { useCustomerProfile, useLikedEvents, useToggleFavorite, getSafeId } from "../../../hooks/useCustomer";
+import { Loader2 } from "lucide-react";
+
 export default function FavoritesPage() {
     const { user, token } = useAuth();
     const router = useRouter();
-    const [customerId, setCustomerId] = useState(null);
-    const [favoriteEventIds, setFavoriteEventIds] = useState([]);
-    const [favoriteEvents, setFavoriteEvents] = useState([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [unfavoritingInProgress, setUnfavoritingInProgress] = useState(new Set());
+
+    const { data: customerData, isLoading: customerLoading, error: customerError } = useCustomerProfile(getSafeId(user));
+    const favoriteEventIds = customerData?.Favorites || [];
+    const { data: favoriteEvents = [], isLoading: eventsLoading, error: eventsError } = useLikedEvents(favoriteEventIds);
+    const toggleFavoriteMutation = useToggleFavorite();
+
     const [searchQuery, setSearchQuery] = useState("");
 
-    useEffect(() => {
-        if (user && token) {
-            fetchCustomerData();
-        }
-    }, [user, token]);
-
-    useEffect(() => {
-        if (favoriteEventIds.length > 0) {
-            fetchFavoriteEvents();
-        } else {
-            setIsLoading(false);
-        }
-    }, [favoriteEventIds]);
-
-    const fetchCustomerData = async () => {
-        try {
-            setIsLoading(true);
-            setError(null);
-
-            // Validate token exists before making request
-            if (!token || token.trim() === '') {
-                console.warn('No valid token available');
-                setError('Authentication token is not available. Please sign in again.');
-                setIsLoading(false);
-                return;
-            }
-
-            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/customers/user/${user._id}`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            if (!response.ok) {
-                if (response.status === 401) {
-                    console.warn('Unauthorized access - session expired or invalid token');
-                    setError('Your session has expired. Please sign in again.');
-                    // Clear auth state
-                    localStorage.removeItem('token');
-                    localStorage.removeItem('user');
-                    sessionStorage.removeItem('token');
-                    sessionStorage.removeItem('user');
-                    setIsLoading(false);
-                    return;
-                }
-                if (response.status === 404) {
-                    console.log('No customer record found for this user');
-                    setIsLoading(false);
-                    return;
-                }
-                const errorData = await response.json().catch(() => ({ message: 'Failed to fetch customer data' }));
-                throw new Error(errorData.message || 'Failed to fetch customer data');
-            }
-
-            const customerData = await response.json();
-            setCustomerId(customerData._id);
-            const eventIds = customerData.Favorites || [];
-            setFavoriteEventIds(eventIds);
-
-        } catch (err) {
-            console.error('Error fetching customer data:', err);
-            setError(err.message);
-            setIsLoading(false);
-        }
-    };
-
-    const fetchFavoriteEvents = async () => {
-        try {
-            setIsLoading(true);
-
-            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events/batch`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ ids: favoriteEventIds })
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to fetch favorite events');
-            }
-
-            const events = await response.json();
-
-            // Sort events by date (ascending)
-            const sortedEvents = [...events].sort((a, b) => {
-                const dateA = new Date(a.startDateTime || a.startDate);
-                const dateB = new Date(b.startDateTime || b.startDate);
-                return dateA - dateB;
-            });
-
-            setFavoriteEvents(sortedEvents);
-
-        } catch (err) {
-            console.error('Error fetching favorite events:', err);
-            setError(err.message);
-        } finally {
-            setIsLoading(false);
-        }
-    };
+    const isLoading = customerLoading || eventsLoading;
+    const error = customerError?.message || eventsError?.message;
 
     const handleUnfavorite = async (eventId, e) => {
         e.preventDefault();
         e.stopPropagation();
 
-        if (!customerId) {
+        if (!customerData?._id) {
             alert('Unable to process request. Please refresh the page.');
             return;
         }
 
-        if (unfavoritingInProgress.has(eventId)) {
-            return;
-        }
-
         try {
-            setUnfavoritingInProgress(prev => new Set([...prev, eventId]));
-
-            const response = await fetch(
-                `${process.env.NEXT_PUBLIC_BACKEND_URI}/customers/${customerId}/favorite-event`,
-                {
-                    method: 'DELETE',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ eventId: eventId })
-                }
-            );
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ message: 'Failed to unfavorite event' }));
-                throw new Error(errorData.message || 'Failed to unfavorite event');
-            }
-
-            setFavoriteEvents(prev => prev.filter(event => event._id !== eventId));
-            setFavoriteEventIds(prev => prev.filter(id => id !== eventId));
-
+            await toggleFavoriteMutation.mutateAsync({
+                customerId: customerData._id,
+                eventId,
+                isFavorite: true // indicates it is currently in favorites, so should be removed
+            });
         } catch (err) {
             console.error('Error unfavoriting event:', err);
             alert(err.message || 'Failed to unfavorite event');
-        } finally {
-            setUnfavoritingInProgress(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(eventId);
-                return newSet;
-            });
         }
     };
 
@@ -175,14 +52,13 @@ export default function FavoritesPage() {
         router.push(`/events/${eventId}`);
     };
 
-
     const filteredEvents = favoriteEvents.filter(event => {
         const searchLower = searchQuery.toLowerCase();
         const dateStr = formatDate(event.startDateTime || event.startDate).toLowerCase();
         return (
             event.name?.toLowerCase().includes(searchLower) ||
             event.category?.toLowerCase().includes(searchLower) ||
-            event.venue?.name?.toLowerCase().includes(searchLower) ||
+            (event.venue?.name?.toLowerCase().includes(searchLower)) ||
             dateStr.includes(searchLower)
         );
     });
@@ -328,12 +204,16 @@ export default function FavoritesPage() {
 
                                             <button
                                                 onClick={(e) => handleUnfavorite(event._id, e)}
-                                                disabled={unfavoritingInProgress.has(event._id)}
-                                                className={`p-2.5 rounded-full backdrop-blur-md transition-all shadow-lg bg-gradient-to-r from-yellow-500 to-yellow-600 text-white border-2 border-yellow-400 ${unfavoritingInProgress.has(event._id) ? 'opacity-70 cursor-wait' : 'hover:scale-110 active:scale-95'
+                                                disabled={toggleFavoriteMutation.isPending}
+                                                className={`p-2.5 rounded-full backdrop-blur-md transition-all shadow-lg bg-gradient-to-r from-yellow-500 to-yellow-600 text-white border-2 border-yellow-400 ${toggleFavoriteMutation.isPending ? 'opacity-70 cursor-wait' : 'hover:scale-110 active:scale-95'
                                                     }`}
                                                 title="Remove from favorites"
                                             >
-                                                <Star className="w-4 h-4 fill-black text-black" />
+                                                {toggleFavoriteMutation.isPending ? (
+                                                    <Loader2 className="w-4 h-4 animate-spin text-black" />
+                                                ) : (
+                                                    <Star className="w-4 h-4 fill-black text-black" />
+                                                )}
                                             </button>
                                         </div>
 
