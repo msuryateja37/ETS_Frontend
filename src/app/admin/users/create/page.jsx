@@ -39,7 +39,39 @@ export default function CreateStaffPage() {
         e.preventDefault();
         setStatus({ type: null, message: "" });
 
+        const trimmedEmail = formData.email.trim().toLowerCase();
+        const trimmedPhone = formData.phone?.trim();
+
         try {
+            // Pre-check for duplicate email
+            const emailRes = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/user/email/${trimmedEmail}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (emailRes.ok) {
+                const text = await emailRes.text();
+                const existingEmail = text && text !== "null" ? JSON.parse(text) : null;
+                if (existingEmail) {
+                    setStatus({ type: "error", message: "A user with this email address already exists." });
+                    return;
+                }
+            }
+
+            // Pre-check for duplicate phone
+            if (trimmedPhone) {
+                const phoneRes = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/user/phone/${trimmedPhone}`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (phoneRes.ok) {
+                    const text = await phoneRes.text();
+                    const existingPhone = text && text !== "null" ? JSON.parse(text) : null;
+                    if (existingPhone) {
+                        setStatus({ type: "error", message: "A user with this phone number already exists." });
+                        return;
+                    }
+                }
+            }
+
+            // Proceed with creation if no duplicates found
             await createStaffMutation.mutateAsync(formData);
 
             setStatus({ type: "success", message: "Personnel record created successfully! Redirecting..." });
@@ -47,8 +79,8 @@ export default function CreateStaffPage() {
                 router.push("/admin/users");
             }, 2000);
         } catch (error) {
-            console.error("Error creating staff:", error);
-            setStatus({ type: "error", message: error.message });
+            // Friendly error message, no console log to avoid clutter
+            setStatus({ type: "error", message: error.message || "An unexpected error occurred." });
         }
     };
 

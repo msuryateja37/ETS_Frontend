@@ -1,6 +1,4 @@
-"use client";
-
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, queryOptions } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext";
 
 const fetcher = async (url, token, options = {}) => {
@@ -38,76 +36,35 @@ export const getSafeId = (data) => {
     return null;
 };
 
-export const useCustomerEvents = (role = "CUSTOMER") => {
-    return useQuery({
+// Query Factory
+export const customerQueries = {
+    events: (role = "CUSTOMER") => queryOptions({
         queryKey: ["customer-events", role],
         queryFn: () => fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events?role=${role}`),
-    });
-};
-
-export const usePastEvents = () => {
-    return useQuery({
+    }),
+    pastEvents: () => queryOptions({
         queryKey: ["past-events"],
         queryFn: async () => {
             const data = await fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events?timeframe=past`);
-            // Sort events by date in descending order (latest first)
             return (data || []).sort((a, b) =>
                 new Date(b.startDateTime || b.startDate) - new Date(a.startDateTime || a.startDate)
             );
         },
-    });
-};
-
-export const useCustomerProfile = (userId) => {
-    const { token } = useAuth();
-    return useQuery({
+    }),
+    profile: (token, userId) => queryOptions({
         queryKey: ["customer-profile", userId],
         queryFn: () => fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/customers/user/${userId}`, token),
         enabled: !!userId && !!token,
         retry: (failureCount, error) => {
-            // Don't retry on 401
             if (error.message.includes("401")) return false;
             return failureCount < 3;
         }
-    });
-};
-
-export const useToggleLike = () => {
-    const { token } = useAuth();
-    const queryClient = useQueryClient();
-
-    return useMutation({
-        mutationFn: ({ customerId, eventId, isLiked }) => {
-            const endpoint = `${process.env.NEXT_PUBLIC_BACKEND_URI}/customers/${customerId}/like-event`;
-            const method = isLiked ? 'DELETE' : 'POST';
-
-            return fetcher(endpoint, token, {
-                method,
-                body: JSON.stringify({ eventId }),
-            });
-        },
-        onSuccess: (_, { eventId }) => {
-            // Invalidate relevant queries
-            queryClient.invalidateQueries({ queryKey: ["customer-profile"] });
-            queryClient.invalidateQueries({ queryKey: ["customer-events"] });
-            // Also potentially invalidate single event query if it exists
-            queryClient.invalidateQueries({ queryKey: ["event", eventId] });
-            queryClient.invalidateQueries({ queryKey: ["events"] });
-        },
-    });
-};
-
-export const useCustomerOrders = (userId) => {
-    const { token } = useAuth();
-    const base = process.env.NEXT_PUBLIC_BACKEND_URI;
-
-    return useQuery({
+    }),
+    orders: (token, userId) => queryOptions({
         queryKey: ["customer-orders", userId],
         queryFn: async () => {
-            // 1. Fetch orders
+            const base = process.env.NEXT_PUBLIC_BACKEND_URI;
             const orderData = await fetcher(`${base}/orders/user/${userId}`, token);
-
-            // 2. Extract event IDs
             const eventIds = [...new Set(orderData.map((o) => getSafeId(o.eventId)).filter(Boolean))];
 
             const eventsMap = new Map();
@@ -119,14 +76,12 @@ export const useCustomerOrders = (userId) => {
                 (Array.isArray(eventsList) ? eventsList : []).forEach((e) => eventsMap.set(getSafeId(e), e));
             }
 
-            // 3. Enrich orders
             const enrichedOrders = await Promise.all(
                 orderData.map(async (order) => {
                     const oid = getSafeId(order);
                     const eid = getSafeId(order.eventId);
                     const eventDetails = eventsMap.get(eid) || null;
 
-                    // Fetch tickets
                     let tickets = [];
                     try {
                         tickets = await fetcher(`${base}/orders/${oid}/tickets`, token);
@@ -134,7 +89,6 @@ export const useCustomerOrders = (userId) => {
                         console.error(`Error fetching tickets for order ${oid}:`, e);
                     }
 
-                    // Fetch venue details
                     let venueName = "Venue TBA";
                     let venueDetails = null;
                     if (eventDetails?.venueId) {
@@ -150,7 +104,6 @@ export const useCustomerOrders = (userId) => {
                         }
                     }
 
-                    // Fetch seat details
                     const ticketsWithSeats = await Promise.all(
                         tickets.map(async (ticket) => {
                             const sid = getSafeId(ticket.seatId);
@@ -190,22 +143,15 @@ export const useCustomerOrders = (userId) => {
             });
         },
         enabled: !!userId && !!token,
-    });
-};
-
-export const useOrderDetails = (orderId) => {
-    const { token } = useAuth();
-    const base = process.env.NEXT_PUBLIC_BACKEND_URI;
-
-    return useQuery({
+    }),
+    orderDetails: (token, orderId) => queryOptions({
         queryKey: ["order-details", orderId],
         queryFn: async () => {
-            // Fetch order with tickets
+            const base = process.env.NEXT_PUBLIC_BACKEND_URI;
             const data = await fetcher(`${base}/orders/${orderId}/with-tickets`, token);
             const order = data.order;
             const tickets = data.tickets;
 
-            // Fetch event details
             const eid = getSafeId(order.eventId);
             let eventDetails = null;
             if (eid) {
@@ -214,7 +160,6 @@ export const useOrderDetails = (orderId) => {
                 } catch (e) { }
             }
 
-            // Fetch venue details
             let venueDetails = null;
             if (eventDetails?.venueId) {
                 const vid = getSafeId(eventDetails.venueId);
@@ -223,7 +168,6 @@ export const useOrderDetails = (orderId) => {
                 } catch (e) { }
             }
 
-            // Fetch seat details
             const ticketsWithSeats = await Promise.all(
                 tickets.map(async (ticket) => {
                     const sid = getSafeId(ticket.seatId);
@@ -245,16 +189,12 @@ export const useOrderDetails = (orderId) => {
                 ticketCount: tickets.length,
             };
         },
-    });
-};
-
-export const useEventDetails = (eventId, role = 'CUSTOMER') => {
-    const { token } = useAuth();
-    const base = process.env.NEXT_PUBLIC_BACKEND_URI;
-
-    return useQuery({
+        enabled: !!orderId && !!token,
+    }),
+    eventDetails: (token, eventId, role = 'CUSTOMER') => queryOptions({
         queryKey: ["event-details", eventId, role],
         queryFn: async () => {
+            const base = process.env.NEXT_PUBLIC_BACKEND_URI;
             const eventData = await fetcher(`${base}/events/${eventId}?role=${role}`, token);
 
             let venueData = null;
@@ -264,14 +204,10 @@ export const useEventDetails = (eventId, role = 'CUSTOMER') => {
 
             if (venueId) {
                 try {
-                    // Fetch full venue object (with sections, dimensions, etc.)
                     venueData = await fetcher(`${base}/venue/${venueId}`, token);
-
-                    // Fetch additional venue details (contact info, map link, etc.)
                     venueDetailsData = await fetcher(`${base}/venue-details/venue/${venueId}`, token);
                 } catch (err) {
                     console.warn('Venue or venue details not found', err);
-                    // If venueDetails fails, we still want the basic venue object if we can get it
                     if (!venueData && typeof eventData.venueId === 'object') {
                         venueData = eventData.venueId;
                     }
@@ -281,7 +217,74 @@ export const useEventDetails = (eventId, role = 'CUSTOMER') => {
             return { event: eventData, venue: venueData, venueDetails: venueDetailsData };
         },
         enabled: !!eventId,
+    }),
+    eventSeats: (token, eventId) => queryOptions({
+        queryKey: ["event-seats", eventId],
+        queryFn: async () => {
+            const data = await fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/seats/event/${eventId}`, token);
+            return data.seats || [];
+        },
+        enabled: !!eventId,
+    }),
+    likedEvents: (token, eventIds) => queryOptions({
+        queryKey: ["liked-events", eventIds],
+        queryFn: () => fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events/batch`, token, {
+            method: "POST",
+            body: JSON.stringify({ ids: eventIds }),
+        }),
+        enabled: !!eventIds && eventIds.length > 0 && !!token,
+    }),
+};
+
+export const useCustomerEvents = (role = "CUSTOMER") => {
+    return useQuery(customerQueries.events(role));
+};
+
+export const usePastEvents = () => {
+    return useQuery(customerQueries.pastEvents());
+};
+
+export const useCustomerProfile = (userId) => {
+    const { token } = useAuth();
+    return useQuery(customerQueries.profile(token, userId));
+};
+
+export const useToggleLike = () => {
+    const { token } = useAuth();
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: ({ customerId, eventId, isLiked }) => {
+            const endpoint = `${process.env.NEXT_PUBLIC_BACKEND_URI}/customers/${customerId}/like-event`;
+            const method = isLiked ? 'DELETE' : 'POST';
+
+            return fetcher(endpoint, token, {
+                method,
+                body: JSON.stringify({ eventId }),
+            });
+        },
+        onSuccess: (_, { eventId }) => {
+            queryClient.invalidateQueries({ queryKey: ["customer-profile"] });
+            queryClient.invalidateQueries({ queryKey: ["customer-events"] });
+            queryClient.invalidateQueries({ queryKey: ["event", eventId] });
+            queryClient.invalidateQueries({ queryKey: ["events"] });
+        },
     });
+};
+
+export const useCustomerOrders = (userId) => {
+    const { token } = useAuth();
+    return useQuery(customerQueries.orders(token, userId));
+};
+
+export const useOrderDetails = (orderId) => {
+    const { token } = useAuth();
+    return useQuery(customerQueries.orderDetails(token, orderId));
+};
+
+export const useEventDetails = (eventId, role = 'CUSTOMER') => {
+    const { token } = useAuth();
+    return useQuery(customerQueries.eventDetails(token, eventId, role));
 };
 
 export const useConfirmPurchase = () => {
@@ -303,14 +306,7 @@ export const useConfirmPurchase = () => {
 
 export const useEventSeats = (eventId) => {
     const { token } = useAuth();
-    return useQuery({
-        queryKey: ["event-seats", eventId],
-        queryFn: async () => {
-            const data = await fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/seats/event/${eventId}`, token);
-            return data.seats || [];
-        },
-        enabled: !!eventId,
-    });
+    return useQuery(customerQueries.eventSeats(token, eventId));
 };
 
 export const useLockSeats = () => {
@@ -346,12 +342,5 @@ export const useToggleFavorite = () => {
 
 export const useLikedEvents = (eventIds) => {
     const { token } = useAuth();
-    return useQuery({
-        queryKey: ["liked-events", eventIds],
-        queryFn: () => fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events/batch`, token, {
-            method: "POST",
-            body: JSON.stringify({ ids: eventIds }),
-        }),
-        enabled: !!eventIds && eventIds.length > 0 && !!token,
-    });
+    return useQuery(customerQueries.likedEvents(token, eventIds));
 };

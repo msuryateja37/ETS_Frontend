@@ -36,7 +36,7 @@ export default function EventSeatingPage() {
   useEffect(() => {
     if (!eventId) return;
 
-    const newSocket = io(process.env.NEXT_PUBLIC_BACKEND_URI || "http://localhost:3001", {
+    const newSocket = io(process.env.NEXT_PUBLIC_BACKEND_URI || "http://localhost:5000", {
       withCredentials: true,
     });
 
