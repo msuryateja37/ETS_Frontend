@@ -41,10 +41,16 @@ export default function AuthLoginPage() {
     requestOtpMutation.isPending ||
     verifyOtpMutation.isPending;
 
-  // If already logged in, redirect to home
+  // Role-based redirect helper
+  const getRoleRedirect = (role) => {
+    if (role === "TICKETING") return "/pos";
+    return "/";
+  };
+
+  // If already logged in, redirect to role-appropriate home
   useEffect(() => {
     if (user && !authLoading) {
-      router.replace("/");
+      router.replace(getRoleRedirect(user.role));
     }
   }, [user, authLoading, router]);
 
@@ -92,17 +98,18 @@ export default function AuthLoginPage() {
     }
 
     try {
+      let result;
       if (isLogin) {
-        await loginMutation.mutateAsync({
+        result = await loginMutation.mutateAsync({
           email: formData.email,
           password: formData.password,
           rememberMe
         });
       } else {
         const { confirmPassword, ...signupData } = formData;
-        await signupMutation.mutateAsync(signupData);
+        result = await signupMutation.mutateAsync(signupData);
       }
-      router.push("/");
+      router.push(getRoleRedirect(result?.user?.role));
     } catch (err) {
       setError(err.message);
     }
@@ -139,7 +146,7 @@ export default function AuthLoginPage() {
     }
 
     try {
-      await verifyOtpMutation.mutateAsync({
+      const result = await verifyOtpMutation.mutateAsync({
         email: formData.email,
         otp: formData.otp,
         name: formData.name,
@@ -147,7 +154,7 @@ export default function AuthLoginPage() {
         role: formData.role,
         rememberMe
       });
-      router.push("/");
+      router.push(getRoleRedirect(result?.user?.role));
     } catch (err) {
       setError(err.message);
     }

@@ -1,14 +1,23 @@
 "use client";
 
+import { useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { useRouter } from "next/navigation";
 import AdminHomePage from "../admin/page";
 import CustomerHomePage from "../customer/page";
-import TicketingHomePage from "../ticketing/page";
 import GateHomePage from "../gate_staff/page";
 import ManagementHomePage from "../management/page";
 
 export default function HomePage() {
   const { user, loading, logout } = useAuth();
+  const router = useRouter();
+
+  // TICKETING staff always live at /pos — redirect immediately
+  useEffect(() => {
+    if (!loading && user?.role === "TICKETING") {
+      router.replace("/pos");
+    }
+  }, [user, loading, router]);
 
   // While auth is loading
   if (loading) {
@@ -39,7 +48,12 @@ export default function HomePage() {
       return <CustomerHomePage user={user} logout={logout} />;
 
     case "TICKETING":
-      return <TicketingHomePage user={user} logout={logout} />;
+      // Handled by the useEffect above — show spinner while redirecting
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-background">
+          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      );
 
     case "GATE":
       return <GateHomePage user={user} logout={logout} />;
