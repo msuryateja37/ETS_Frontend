@@ -1,6 +1,4 @@
-"use client";
-
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, queryOptions } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext";
 
 const fetcher = async (url, token, options = {}) => {
@@ -13,37 +11,89 @@ const fetcher = async (url, token, options = {}) => {
         },
     });
     if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
+        const text = await res.text().catch(() => "");
+        let errorData = {};
+        try {
+            errorData = text ? JSON.parse(text) : {};
+        } catch (e) {
+            errorData = {};
+        }
         throw new Error(errorData.message || `Failed to fetch: ${res.statusText}`);
     }
-    return res.json();
+    const text = await res.text();
+    return text ? JSON.parse(text) : null;
+};
+
+// Query Factory
+export const adminQueries = {
+    allEvents: (token) => queryOptions({
+        queryKey: ["events"],
+        queryFn: () => fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events`, token),
+        enabled: !!token,
+    }),
+    allUsers: (token) => queryOptions({
+        queryKey: ["users"],
+        queryFn: () => fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/user`, token),
+        enabled: !!token,
+    }),
+    allTickets: (token) => queryOptions({
+        queryKey: ["tickets"],
+        queryFn: () => fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/tickets`, token),
+        enabled: !!token,
+    }),
+    me: (token, userId) => queryOptions({
+        queryKey: ["me", userId],
+        queryFn: () => fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/user/${userId}`, token),
+        enabled: !!token && !!userId,
+    }),
+    venues: (token) => queryOptions({
+        queryKey: ["venues"],
+        queryFn: async () => {
+            const data = await fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/venue`, token);
+            return data.venues || [];
+        },
+        enabled: !!token,
+    }),
+    gateStaff: (token) => queryOptions({
+        queryKey: ["gate-staff"],
+        queryFn: () => fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/gate-staff`, token),
+        enabled: !!token,
+    }),
+    eventDetail: (token, eventId) => queryOptions({
+        queryKey: ["event", eventId],
+        queryFn: () => fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events/${eventId}`, token),
+        enabled: !!token && !!eventId,
+    }),
+    eventAssignments: (token, eventId) => queryOptions({
+        queryKey: ["event-assignments", eventId],
+        queryFn: () => fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/gatestaffassignment/event/${eventId}`, token),
+        enabled: !!token && !!eventId,
+    }),
+    checkUserByEmail: (token, email) => queryOptions({
+        queryKey: ["user-check-email", email],
+        queryFn: () => fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/user/email/${email}`, token).catch(() => null),
+        enabled: !!token && !!email,
+    }),
+    checkUserByPhone: (token, phone) => queryOptions({
+        queryKey: ["user-check-phone", phone],
+        queryFn: () => fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/user/phone/${phone}`, token).catch(() => null),
+        enabled: !!token && !!phone,
+    }),
 };
 
 export const useEvents = () => {
     const { token } = useAuth();
-    return useQuery({
-        queryKey: ["events"],
-        queryFn: () => fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events`, token),
-        enabled: !!token,
-    });
+    return useQuery(adminQueries.allEvents(token));
 };
 
 export const useUsers = () => {
     const { token } = useAuth();
-    return useQuery({
-        queryKey: ["users"],
-        queryFn: () => fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/user`, token),
-        enabled: !!token,
-    });
+    return useQuery(adminQueries.allUsers(token));
 };
 
 export const useTickets = () => {
     const { token } = useAuth();
-    return useQuery({
-        queryKey: ["tickets"],
-        queryFn: () => fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/tickets`, token),
-        enabled: !!token,
-    });
+    return useQuery(adminQueries.allTickets(token));
 };
 
 export const useAdminDashboardData = () => {
@@ -160,6 +210,9 @@ export const useDeleteUser = () => {
             // 2. Delete the user
             return fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/user/${userId}`, token, {
                 method: 'DELETE',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
             });
         },
         onSuccess: () => {
@@ -308,11 +361,7 @@ export const useAssignGateStaff = () => {
 
 export const useMe = () => {
     const { token, user } = useAuth();
-    return useQuery({
-        queryKey: ["me", user?._id],
-        queryFn: () => fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/user/${user._id}`, token),
-        enabled: !!token && !!user?._id,
-    });
+    return useQuery(adminQueries.me(token, user?._id));
 };
 
 export const useUpdateProfile = () => {
@@ -335,39 +384,20 @@ export const useUpdateProfile = () => {
 
 export const useVenues = () => {
     const { token } = useAuth();
-    return useQuery({
-        queryKey: ["venues"],
-        queryFn: async () => {
-            const data = await fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/venue`, token);
-            return data.venues || [];
-        },
-        enabled: !!token,
-    });
+    return useQuery(adminQueries.venues(token));
 };
 
 export const useGateStaff = () => {
     const { token } = useAuth();
-    return useQuery({
-        queryKey: ["gate-staff"],
-        queryFn: () => fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/gate-staff`, token),
-        enabled: !!token,
-    });
+    return useQuery(adminQueries.gateStaff(token));
 };
 
 export const useAdminEvent = (eventId) => {
     const { token } = useAuth();
-    return useQuery({
-        queryKey: ["event", eventId],
-        queryFn: () => fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events/${eventId}`, token),
-        enabled: !!token && !!eventId,
-    });
+    return useQuery(adminQueries.eventDetail(token, eventId));
 };
 
 export const useEventAssignments = (eventId) => {
     const { token } = useAuth();
-    return useQuery({
-        queryKey: ["event-assignments", eventId],
-        queryFn: () => fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/gatestaffassignment/event/${eventId}`, token),
-        enabled: !!token && !!eventId,
-    });
+    return useQuery(adminQueries.eventAssignments(token, eventId));
 };
