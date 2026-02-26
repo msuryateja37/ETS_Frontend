@@ -114,7 +114,9 @@ export default function EventDetailsPage() {
         <div className="text-center max-w-md bg-gradient-to-br from-card to-background p-8 rounded-2xl border-2 border-primary/20 shadow-xl">
           <Crown className="w-16 h-16 text-primary mx-auto mb-4" />
           <h2 className="text-2xl font-black text-foreground mb-2">Event Not Found</h2>
-          <p className="text-muted-foreground mb-6">{error || 'This event could not be loaded'}</p>
+          <p className="text-muted-foreground mb-6">
+            {'No such event was found.'}
+          </p>
           <button
             onClick={() => router.push('/')}
             className="px-6 py-3 bg-gradient-to-r from-primary to-primary-dark text-primary-foreground rounded-xl hover:from-primary-light hover:to-primary transition-all font-bold shadow-lg shadow-primary/30"
@@ -134,7 +136,7 @@ export default function EventDetailsPage() {
       <div className="relative h-[625px] w-full overflow-hidden bg-background">
         <div className="absolute inset-0">
           <img
-            src={event.landscapeImage || event.portraitImage}
+            src={event.images?.landscapeImage || event.images?.portraitImage || event.landscapeImage || event.portraitImage || event.image || event.posterURL}
             alt={event.name}
             className="w-full h-full object-cover opacity-40"
             onError={(e) => {

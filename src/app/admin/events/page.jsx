@@ -469,9 +469,9 @@ export default function AdminEventsPage() {
                                     >
                                         {/* Image Section with Glassy Overlay */}
                                         <div className="relative h-64 overflow-hidden">
-                                            {event.portraitImage || event.landscapeImage || event.image || event.posterURL ? (
+                                            {event.images?.portraitImage || event.images?.landscapeImage || event.portraitImage || event.landscapeImage || event.image || event.posterURL ? (
                                                 <img
-                                                    src={event.landscapeImage || event.image || event.posterURL}
+                                                    src={event.images?.landscapeImage || event.images?.portraitImage || event.landscapeImage || event.portraitImage || event.image || event.posterURL}
                                                     alt={event.name}
                                                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                                                 />

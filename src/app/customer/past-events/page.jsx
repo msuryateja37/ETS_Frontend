@@ -159,9 +159,13 @@ const EventCard = memo(({ event, onClick, onLike, isLiked, isLiking, formatDate 
 
     const eventImageUrl = useMemo(() => {
         if (!event) return '';
-        return event.landscapeImage ||
+        return event.images?.landscapeImage ||
+            event.images?.portraitImage ||
+            event.landscapeImage ||
             event.portraitImage ||
-            (event.images && event.images.landscape) ||
+            event.image ||
+            event.posterURL ||
+            event.images?.landscape ||
             `https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=500&auto=format&fit=crop&q=60`;
     }, [event]);
 

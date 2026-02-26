@@ -23,7 +23,12 @@ export default function EditEventPage({ params }) {
 
     const handleSubmit = async (formData) => {
         try {
-            const { gateStaff: currentAssignments = [], ...eventFields } = formData;
+            const {
+                gateStaff: currentAssignments = [],
+                portraitImageFile,
+                landscapeImageFile,
+                ...eventFields
+            } = formData;
 
             const getUserId = (staff) => {
                 if (!staff.userId) return null;
@@ -60,9 +65,29 @@ export default function EditEventPage({ params }) {
                     return { id: init._id, gateName: curr.gateName };
                 });
 
+            // Build multipart form-data payload for the event update (supports files & URLs)
+            const body = new FormData();
+
+            Object.entries(eventFields).forEach(([key, value]) => {
+                if (value === undefined || value === null || key === 'images') return;
+
+                if (key === 'zones' || key === 'eventContactDetails') {
+                    body.append(key, JSON.stringify(value));
+                } else {
+                    body.append(key, String(value));
+                }
+            });
+
+            if (portraitImageFile) {
+                body.append('portraitImage', portraitImageFile);
+            }
+            if (landscapeImageFile) {
+                body.append('landscapeImage', landscapeImageFile);
+            }
+
             await updateMutation.mutateAsync({
                 eventId: id,
-                eventData: eventFields,
+                eventData: body,
                 assignmentsToAdd,
                 assignmentsToDelete,
                 assignmentsToUpdate

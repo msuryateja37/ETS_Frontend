@@ -185,7 +185,7 @@ export default function FavoritesPage() {
                                     {/* Image Container */}
                                     <div className="relative aspect-[3/2] overflow-hidden bg-background">
                                         <img
-                                            src={event.landscapeImage || event.portraitImage || `https://source.unsplash.com/800x600/?${encodeURIComponent(event.category)},event`}
+                                            src={event.images?.landscapeImage || event.images?.portraitImage || event.landscapeImage || event.portraitImage || event.image || event.posterURL || `https://source.unsplash.com/800x600/?${encodeURIComponent(event.category)},event`}
                                             alt={event.name}
                                             className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                                             onError={(e) => {
