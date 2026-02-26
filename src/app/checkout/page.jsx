@@ -192,8 +192,8 @@ function CheckoutContent() {
 
                                 {/* Event Mini Card */}
                                 <div className="flex gap-6 p-4 bg-background-elevated rounded-xl border border-border mb-8">
-                                    {(event.landscapeImage || event.portraitImage) && (
-                                        <img src={event.landscapeImage || event.portraitImage} alt={event.name} className="w-24 h-32 object-cover rounded shadow-md" />
+                                    {(event.images.landscapeImage || event.images.portraitImage) && (
+                                        <img src={event.images.landscapeImage || event.images.portraitImage} alt={event.name} className="w-24 h-32 object-cover rounded shadow-md" />
                                     )}
                                     <div className="flex flex-col justify-center">
                                         <h3 className="text-xl font-bold text-foreground mb-2">{event.name}</h3>

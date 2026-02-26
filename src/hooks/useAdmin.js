@@ -2,13 +2,21 @@ import { useQuery, useMutation, useQueryClient, queryOptions } from "@tanstack/r
 import { useAuth } from "../context/AuthContext";
 
 const fetcher = async (url, token, options = {}) => {
+    const isFormData =
+        typeof FormData !== "undefined" && options.body instanceof FormData;
+
+    const headers = {
+        Authorization: `Bearer ${token}`,
+        ...(options.headers || {}),
+    };
+
+    if (!isFormData) {
+        headers["Content-Type"] = headers["Content-Type"] || "application/json";
+    }
+
     const res = await fetch(url, {
         ...options,
-        headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-            ...options.headers,
-        },
+        headers,
     });
     if (!res.ok) {
         const text = await res.text().catch(() => "");
@@ -260,7 +268,7 @@ export const useUpdateEvent = () => {
         mutationFn: ({ eventId, eventData }) =>
             fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events/${eventId}`, token, {
                 method: "PUT",
-                body: JSON.stringify(eventData),
+                body: eventData,
             }),
         onSuccess: (data, variables) => {
             queryClient.invalidateQueries({ queryKey: ["events"] });
@@ -278,7 +286,7 @@ export const useUpdateEventWithStaff = () => {
             // 1. Update event details
             const updatedEvent = await fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events/${eventId}`, token, {
                 method: "PUT",
-                body: JSON.stringify(eventData),
+                body: eventData,
             });
 
             const apiPromises = [];
@@ -340,7 +348,7 @@ export const useCreateEvent = () => {
         mutationFn: (eventData) =>
             fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events`, token, {
                 method: "POST",
-                body: JSON.stringify(eventData),
+                body: eventData,
             }),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["events"] });

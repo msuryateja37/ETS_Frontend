@@ -95,8 +95,12 @@ export default function EventDetailsPage({ params }) {
                             {/* Images Section */}
                             <div className="bg-card rounded-3xl border border-border overflow-hidden shadow-sm">
                                 <div className="aspect-video relative bg-muted">
-                                    {event.landscapeImage ? (
-                                        <img src={event.landscapeImage} alt="Event Cover" className="w-full h-full object-cover" />
+                                    {event.images?.landscapeImage || event.images?.portraitImage || event.landscapeImage || event.portraitImage || event.image || event.posterURL ? (
+                                        <img
+                                            src={event.images?.landscapeImage || event.images?.portraitImage || event.landscapeImage || event.portraitImage || event.image || event.posterURL}
+                                            alt="Event Cover"
+                                            className="w-full h-full object-cover"
+                                        />
                                     ) : (
                                         <div className="flex items-center justify-center h-full text-muted-foreground">
                                             <Image className="w-12 h-12 opacity-20" />

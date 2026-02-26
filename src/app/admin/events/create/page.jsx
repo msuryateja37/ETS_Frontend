@@ -18,10 +18,35 @@ export default function CreateEventPage() {
     const handleSubmit = async (formData) => {
         try {
             // Separate gate staff from event data
-            const { gateStaff, ...eventData } = formData;
+            const {
+                gateStaff,
+                portraitImageFile,
+                landscapeImageFile,
+                ...eventFields
+            } = formData;
+
+            // Build multipart form-data payload for event (supports file uploads & URLs)
+            const body = new FormData();
+
+            Object.entries(eventFields).forEach(([key, value]) => {
+                if (value === undefined || value === null || key === 'images') return;
+
+                if (key === 'zones' || key === 'eventContactDetails') {
+                    body.append(key, JSON.stringify(value));
+                } else {
+                    body.append(key, String(value));
+                }
+            });
+
+            if (portraitImageFile) {
+                body.append('portraitImage', portraitImageFile);
+            }
+            if (landscapeImageFile) {
+                body.append('landscapeImage', landscapeImageFile);
+            }
 
             // 1. Create Event
-            const newEvent = await createEventMutation.mutateAsync(eventData);
+            const newEvent = await createEventMutation.mutateAsync(body);
             const eventId = newEvent._id;
 
             // 2. Create Gate Staff Assignments
