@@ -22,6 +22,7 @@ export default function EventSeatingPage() {
 
   const eventId = params?.id ? getSafeId(params.id) : null;
   const role = user?.role || 'CUSTOMER';
+  const isPOS = role === 'TICKETING';
 
   const { data: eventDetails, isLoading: eventLoading, error: eventError } = useEventDetails(eventId, role);
   const { data: seats = [], isLoading: seatsLoading, error: seatsError } = useEventSeats(eventId);
@@ -177,6 +178,13 @@ export default function EventSeatingPage() {
       const eid = getSafeId(event);
       const seatIds = Array.from(selectedSeats);
 
+      if (isPOS) {
+        // POS staff: redirect back to POS sell page with seat selection
+        const seatIdsParam = seatIds.join(",");
+        router.push(`/pos/sell?eventId=${eid}&seatIds=${encodeURIComponent(seatIdsParam)}`);
+        return;
+      }
+
       await lockSeatsMutation.mutateAsync({
         eventSeatIds: seatIds,
         userId: userId,
@@ -198,7 +206,7 @@ export default function EventSeatingPage() {
 
   if (loading) {
     return (
-      <RoleGuard allowedRoles={["CUSTOMER"]}>
+      <RoleGuard allowedRoles={["CUSTOMER", "TICKETING"]}>
         <div className="min-h-screen bg-background">
           <Navbar />
           <div className="flex items-center justify-center" style={{ minHeight: 'calc(100vh - 200px)' }}>
@@ -215,7 +223,7 @@ export default function EventSeatingPage() {
 
   if (error || !event || !venue) {
     return (
-      <RoleGuard allowedRoles={["CUSTOMER"]}>
+      <RoleGuard allowedRoles={["CUSTOMER", "TICKETING"]}>
         <div className="min-h-screen bg-background">
           <Navbar />
           <div className="flex items-center justify-center" style={{ minHeight: 'calc(100vh - 200px)' }}>
@@ -241,7 +249,7 @@ export default function EventSeatingPage() {
   }
 
   return (
-    <RoleGuard allowedRoles={["CUSTOMER"]}>
+    <RoleGuard allowedRoles={["CUSTOMER", "TICKETING"]}>
       <div className="min-h-screen bg-background">
         <Navbar />
 
@@ -349,7 +357,7 @@ export default function EventSeatingPage() {
                 ) : (
                   <>
                     <ShoppingCart className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                    <span>Confirm Selection</span>
+                    <span>{isPOS ? "Continue to POS" : "Confirm Selection"}</span>
                   </>
                 )}
               </button>

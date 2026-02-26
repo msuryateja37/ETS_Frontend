@@ -42,6 +42,11 @@ export const customerQueries = {
         queryKey: ["customer-events", role],
         queryFn: () => fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events?role=${role}`),
     }),
+    venueEvents: (token, venueId, role = "TICKETING") => queryOptions({
+        queryKey: ["venue-events", venueId, role],
+        queryFn: () => fetcher(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events/venue/${venueId}`, token),
+        enabled: !!venueId,
+    }),
     pastEvents: () => queryOptions({
         queryKey: ["past-events"],
         queryFn: async () => {
@@ -238,6 +243,11 @@ export const customerQueries = {
 
 export const useCustomerEvents = (role = "CUSTOMER") => {
     return useQuery(customerQueries.events(role));
+};
+
+export const useVenueEvents = (venueId, role = "TICKETING") => {
+    const { token } = useAuth();
+    return useQuery(customerQueries.venueEvents(token, venueId, role));
 };
 
 export const usePastEvents = () => {
