@@ -1,6 +1,6 @@
 "use client";
 export const dynamic = "force-dynamic";
-import React, { useState, Suspense } from "react";
+import React, { useState, Suspense, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import RoleGuard from "../components/RoleGuard";
 
-import { useEventDetails, useEventSeats, useConfirmPurchase, getSafeId } from "../../hooks/useCustomer";
+import { useEventDetails, useEventSeats, useConfirmPurchase, getSafeId, useValidateLoyalty } from "../../hooks/useCustomer";
 
 function getSectionName(venue, sectionId) {
     if (!venue?.sections || !sectionId) return "";
@@ -43,6 +43,11 @@ function CheckoutContent() {
     const confirmPurchaseMutation = useConfirmPurchase();
 
     const [success, setSuccess] = useState(false);
+    const [loyaltyCode, setLoyaltyCode] = useState("");
+    const [loyaltyError, setLoyaltyError] = useState("");
+    const [appliedLoyaltyCode, setAppliedLoyaltyCode] = useState("");
+    const [loyaltyDiscount, setLoyaltyDiscount] = useState(null);
+    const validateLoyaltyMutation = useValidateLoyalty();
 
     const event = eventDetails?.event;
     const venue = eventDetails?.venue;
@@ -58,7 +63,39 @@ function CheckoutContent() {
         return heldSeats.reduce((acc, seat) => acc + (Number(seat.price) || 0), 0);
     };
 
-    const calculateTax = (subtotal) => subtotal * 0.15;
+    const calculateTax = (subtotal, discount = 0) => (subtotal - discount) * 0.15;
+
+    const handleApplyLoyalty = async () => {
+        if (!loyaltyCode.trim()) return;
+        setLoyaltyError("");
+        try {
+            const result = await validateLoyaltyMutation.mutateAsync({
+                code: loyaltyCode,
+                eventId: eventId
+            });
+            setLoyaltyDiscount(result.discount);
+            setAppliedLoyaltyCode(loyaltyCode);
+        } catch (err) {
+            setLoyaltyError(err.message || "Invalid Loyalty ID");
+            setLoyaltyDiscount(null);
+            setAppliedLoyaltyCode("");
+        }
+    };
+
+    const handleRemoveLoyalty = () => {
+        setAppliedLoyaltyCode("");
+        setLoyaltyDiscount(null);
+        setLoyaltyCode("");
+        setLoyaltyError("");
+    };
+
+    const calculateDiscount = (subtotal) => {
+        if (!loyaltyDiscount) return 0;
+        if (loyaltyDiscount.type === "PERCENTAGE") {
+            return (subtotal * loyaltyDiscount.value) / 100;
+        }
+        return loyaltyDiscount.value;
+    };
 
     const handleConfirmPurchase = async () => {
         const userId = getSafeId(user);
@@ -73,6 +110,7 @@ function CheckoutContent() {
             await confirmPurchaseMutation.mutateAsync({
                 seatIds: seatIdsToConfirm,
                 userId: userId,
+                loyaltyCode: appliedLoyaltyCode || undefined,
             });
             setSuccess(true);
             sessionStorage.removeItem("selectedSeats");
@@ -147,7 +185,7 @@ function CheckoutContent() {
                             </div>
                             <div className="mt-8 pt-8 border-t border-border flex justify-between items-center text-xl">
                                 <span className="font-bold text-foreground">Total Paid</span>
-                                <span className="font-black text-primary">{event.currency || "R"} {(calculateSubtotal() + calculateTax(calculateSubtotal())).toFixed(2)}</span>
+                                <span className="font-black text-primary">{event.currency || "R"} {(calculateSubtotal() - calculateDiscount(calculateSubtotal()) + calculateTax(calculateSubtotal(), calculateDiscount(calculateSubtotal()))).toFixed(2)}</span>
                             </div>
                         </div>
 
@@ -172,8 +210,9 @@ function CheckoutContent() {
     }
 
     const subtotal = calculateSubtotal();
-    const tax = calculateTax(subtotal);
-    const total = subtotal + tax;
+    const discountAmount = calculateDiscount(subtotal);
+    const tax = calculateTax(subtotal, discountAmount);
+    const total = subtotal - discountAmount + tax;
 
     return (
         <RoleGuard allowedRoles={["CUSTOMER"]}>
@@ -279,6 +318,68 @@ function CheckoutContent() {
                                         <span>Booking Fee (15%)</span>
                                         <span className="text-foreground">{event.currency || "R"} {tax.toFixed(2)}</span>
                                     </div>
+
+                                    {discountAmount > 0 && (
+                                        <div className="flex justify-between text-accent font-bold">
+                                            <span>Loyalty Discount</span>
+                                            <span>-{event.currency || "R"} {discountAmount.toFixed(2)}</span>
+                                        </div>
+                                    )}
+
+                                    <div className="h-px bg-border my-6"></div>
+
+                                    {/* Loyalty ID Input */}
+                                    <div className="mb-6">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <label className="text-sm font-bold text-foreground">Loyalty ID (Optional)</label>
+                                            {appliedLoyaltyCode && (
+                                                <button
+                                                    onClick={handleRemoveLoyalty}
+                                                    className="text-xs text-destructive hover:underline flex items-center"
+                                                >
+                                                    Remove
+                                                </button>
+                                            )}
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                value={loyaltyCode}
+                                                onChange={(e) => {
+                                                    setLoyaltyCode(e.target.value);
+                                                    if (loyaltyError) setLoyaltyError("");
+                                                }}
+                                                placeholder="Enter Member ID"
+                                                className={`flex-grow bg-background border ${loyaltyError ? 'border-destructive' : 'border-border'} rounded px-3 py-2 text-sm focus:border-primary outline-none transition-colors`}
+                                                disabled={validateLoyaltyMutation.isPending || !!appliedLoyaltyCode}
+                                            />
+                                            {!appliedLoyaltyCode ? (
+                                                <button
+                                                    onClick={handleApplyLoyalty}
+                                                    disabled={validateLoyaltyMutation.isPending || !loyaltyCode}
+                                                    className="bg-primary text-primary-foreground px-4 py-2 rounded text-sm font-bold hover:bg-primary-dark disabled:opacity-50 transition-colors"
+                                                >
+                                                    {validateLoyaltyMutation.isPending ? "..." : "Apply"}
+                                                </button>
+                                            ) : (
+                                                <div className="bg-accent/20 text-accent px-4 py-2 rounded text-sm font-bold flex items-center border border-accent/30">
+                                                    Applied
+                                                </div>
+                                            )}
+                                        </div>
+                                        {loyaltyError && (
+                                            <div className="bg-destructive/10 border border-destructive/20 rounded p-2 mt-2 flex items-start">
+                                                <AlertCircle className="w-4 h-4 text-destructive mr-2 mt-0.5 shrink-0" />
+                                                <p className="text-xs font-medium text-destructive">{loyaltyError}</p>
+                                            </div>
+                                        )}
+                                        {appliedLoyaltyCode && (
+                                            <p className="text-xs text-accent mt-2 flex items-center italic">
+                                                <CheckCircle2 className="w-3 h-3 mr-1" /> Code {appliedLoyaltyCode} applied ({loyaltyDiscount?.pointsRequired} pts)
+                                            </p>
+                                        )}
+                                    </div>
+
                                     <div className="h-px bg-border my-6"></div>
                                     <div className="flex justify-between items-end">
                                         <div>

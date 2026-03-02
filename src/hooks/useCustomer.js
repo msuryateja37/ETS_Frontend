@@ -354,3 +354,14 @@ export const useLikedEvents = (eventIds) => {
     const { token } = useAuth();
     return useQuery(customerQueries.likedEvents(token, eventIds));
 };
+
+export const useValidateLoyalty = () => {
+    const { token } = useAuth();
+    return useMutation({
+        mutationFn: ({ code, eventId }) => {
+            const url = new URL(`${process.env.NEXT_PUBLIC_BACKEND_URI}/loyality-membership/validate/${code}`);
+            if (eventId) url.searchParams.append("eventId", eventId);
+            return fetcher(url.toString(), token);
+        },
+    });
+};
