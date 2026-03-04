@@ -35,6 +35,8 @@ import {
     Filter,
     Tag,
     Printer,
+    User,
+    Mail,
 } from "lucide-react";
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URI || "http://localhost:5000";
@@ -501,6 +503,10 @@ export default function POSSellPage() {
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState("");
 
+    // Customer details (collected on Step 2)
+    const [customerName, setCustomerName] = useState("");
+    const [customerEmail, setCustomerEmail] = useState("");
+
     // Sale result
     const [saleResult, setSaleResult] = useState(null);
 
@@ -597,6 +603,8 @@ export default function POSSellPage() {
                 userId: user._id,
                 totalAmount,
                 seatIds: selectedSeatIds.length > 0 ? selectedSeatIds : undefined,
+                customerName: customerName.trim(),
+                customerEmail: customerEmail.trim().toLowerCase(),
             };
 
             const result = await apiFetch(`${API}/pos-session/sell`, token, {
@@ -630,6 +638,8 @@ export default function POSSellPage() {
         setPaymentMethod("CASH");
         setError("");
         setSaleResult(null);
+        setCustomerName("");
+        setCustomerEmail("");
     };
 
     const loading = staffLoading || eventsLoading;
@@ -876,6 +886,40 @@ export default function POSSellPage() {
                                     </button>
                                 </div>
 
+                                {/* Customer Details — required before processing */}
+                                <div className="bg-card border-2 border-primary/20 rounded-2xl p-6">
+                                    <p className="text-xs font-black text-primary uppercase tracking-widest mb-4">Customer Details</p>
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                                                <User className="w-3.5 h-3.5" /> Customer Name <span className="text-red-400">*</span>
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={customerName}
+                                                onChange={(e) => setCustomerName(e.target.value)}
+                                                placeholder="e.g. Jane Doe"
+                                                className="w-full px-4 py-3 rounded-xl border-2 border-primary/20 bg-card-elevated text-foreground placeholder-muted-foreground text-sm focus:border-primary focus:outline-none transition-colors"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                                                <Mail className="w-3.5 h-3.5" /> Customer Email <span className="text-red-400">*</span>
+                                            </label>
+                                            <input
+                                                type="email"
+                                                value={customerEmail}
+                                                onChange={(e) => setCustomerEmail(e.target.value)}
+                                                placeholder="e.g. jane@example.com"
+                                                className="w-full px-4 py-3 rounded-xl border-2 border-primary/20 bg-card-elevated text-foreground placeholder-muted-foreground text-sm focus:border-primary focus:outline-none transition-colors"
+                                            />
+                                        </div>
+                                        <p className="text-xs text-muted-foreground font-medium">
+                                            A customer account will be created or linked using this email.
+                                        </p>
+                                    </div>
+                                </div>
+
                                 {/* Price summary — auto-derived from event zone, no manual picker */}
                                 {eventZone && (
                                     <div className="bg-card border-2 border-primary/20 rounded-2xl p-4 flex items-center justify-between">
@@ -915,7 +959,7 @@ export default function POSSellPage() {
 
                                 <button
                                     onClick={handleSell}
-                                    disabled={selectedSeatIds.length === 0 || submitting}
+                                    disabled={selectedSeatIds.length === 0 || submitting || !customerName.trim() || !customerEmail.trim()}
                                     className="w-full py-4 rounded-xl bg-gradient-to-r from-accent to-accent-dark text-background font-black uppercase tracking-wide text-sm hover:opacity-90 transition-all shadow-lg shadow-accent/20 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                                 >
                                     {submitting ? (
