@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/context/AuthContext";
 import { useRouter, usePathname } from "next/navigation";
-import { Home, Search, Ticket, Heart, Settings, Users, LogOut, MessageCircle, MessageSquare, Sparkles, Star, Calendar } from "lucide-react";
+import { Home, Search, Ticket, Heart, Settings, Users, LogOut, MessageCircle, MessageSquare, Sparkles, Star, Calendar, Clock } from "lucide-react";
 import Image from "next/image";
 
 export default function Navbar({ showSearch = false, searchQuery, setSearchQuery, onSearch }) {
@@ -33,16 +33,17 @@ export default function Navbar({ showSearch = false, searchQuery, setSearchQuery
   const customerNavItems = [
     { icon: Home, label: "Home", path: "/" },
     { icon: Ticket, label: "My Tickets", path: "/customer/tickets" },
-    { icon: Heart, label: "Likes", path: "/customer/likes"},
+    { icon: Heart, label: "Likes", path: "/customer/likes" },
     { icon: Star, label: "Favorites", path: "/customer/favorites" },
     { icon: Calendar, label: "Past Events", path: "/customer/past-events" },
     { icon: MessageCircle, label: "Contact Us", path: "/customer/contactus" },
   ];
 
-  // Ticketing navigation items
+  // POS (Ticketing staff) navigation items
   const ticketingNavItems = [
-    { icon: Home, label: "Home", path: "/" },
-    { icon: Ticket, label: "Tickets", path: "/ticketing/sales" },
+    { icon: Home, label: "POS Home", path: "/pos" },
+    { icon: Ticket, label: "Sell Ticket", path: "/pos/sell" },
+    { icon: Clock, label: "Sessions", path: "/pos/sessions" },
   ];
 
   // Gate navigation items
@@ -69,11 +70,17 @@ export default function Navbar({ showSearch = false, searchQuery, setSearchQuery
       case "MANAGEMENT":
         return managementNavItems;
       default:
-        return [{ icon: Home, label: "Home", path: "/" }];
+        return [{ icon: Home, label: "Home", path: "/" },
+        { icon: Calendar, label: "Past Events", path: "/customer/past-events" },
+        { icon: MessageCircle, label: "Contact Us", path: "/customer/contactus" },
+        ];
     }
   };
 
-  const navItems = user ? getNavItems() : [{ icon: Home, label: "Home", path: "/" }];
+  const navItems = user ? getNavItems() : [{ icon: Home, label: "Home", path: "/" },
+  { icon: Calendar, label: "Past Events", path: "/customer/past-events" },
+  { icon: MessageCircle, label: "Contact Us", path: "/customer/contactus" },
+  ];
 
   return (
     <>
@@ -133,7 +140,7 @@ export default function Navbar({ showSearch = false, searchQuery, setSearchQuery
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && onSearch && onSearch()}
-                  placeholder="Search events..."
+                  placeholder={pathname.includes('tickets') ? "Search orders, seats, events..." : "Search events..."}
                   className="w-64 pl-10 pr-4 py-2 bg-card hover:bg-background-hover focus:bg-background-hover border border-primary/20 focus:border-primary rounded-full text-sm text-foreground placeholder-muted-foreground focus:outline-none transition-all duration-300"
                 />
               </div>

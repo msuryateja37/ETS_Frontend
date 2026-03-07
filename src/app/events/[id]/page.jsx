@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/app/components/Navbar";
+import { formatDate, formatTime } from "@/app/utils/dateUtils";
 import { formatLikes } from "../../utils/formatLikes";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -24,94 +25,28 @@ import {
 } from 'lucide-react';
 import Footer from "@/app/components/Footer";
 
+import { useEventDetails, useCustomerProfile, useToggleLike, useToggleFavorite, getSafeId } from "../../../hooks/useCustomer";
+
 export default function EventDetailsPage() {
   const params = useParams();
   const router = useRouter();
-  const [event, setEvent] = useState(null);
-  const [venue, setVenue] = useState(null);
-  const [venueDetails, setVenueDetails] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [isLiked, setIsLiked] = useState(false);
-  const [isFavorited, setIsFavorited] = useState(false);
-  const [likingInProgress, setLikingInProgress] = useState(false);
-  const [favoritingInProgress, setFavoritingInProgress] = useState(false);
-  const [customerId, setCustomerId] = useState(null);
   const { user, token } = useAuth();
 
-  useEffect(() => {
-    if (params?.id) {
-      fetchEventDetails(params.id);
-      if (user && token) {
-        fetchCustomerData(params.id);
-      }
-    }
-  }, [params?.id, user, token]);
+  const eventId = params?.id;
+  const role = user?.role || 'CUSTOMER';
 
-  const fetchEventDetails = async (eventId) => {
-    try {
-      setLoading(true);
-      setError(null);
+  const { data: eventDetails, isLoading: eventLoading, error: eventError } = useEventDetails(eventId, role);
+  const { data: customerData, isLoading: customerLoading } = useCustomerProfile(getSafeId(user));
 
-      const role = user?.role || 'CUSTOMER';
-      const eventRes = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events/${eventId}?role=${role}`);
-      if (!eventRes.ok) return;
-      const eventData = await eventRes.json();
-      setEvent(eventData);
+  const toggleLikeMutation = useToggleLike();
+  const toggleFavoriteMutation = useToggleFavorite();
 
-      if (eventData.venueId) {
-        // venueId is now populated as an object from backend
-        const venueObj = eventData.venueId;
-        setVenue(venueObj);
+  const event = eventDetails?.event;
+  const venue = eventDetails?.venue;
+  const venueDetails = eventDetails?.venueDetails;
 
-        // Fetch extra venue details from venue-details table
-        const venueId = venueObj._id;
-        const venueDetailsRes = await fetch(
-          `${process.env.NEXT_PUBLIC_BACKEND_URI}/venue-details/venue/${venueId}`
-        );
-
-        if (venueDetailsRes.ok) {
-          const vDetailsData = await venueDetailsRes.json();
-          setVenueDetails(vDetailsData);
-        }
-      }
-    } catch (err) {
-      console.error('Error fetching event details:', err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchCustomerData = async (eventId) => {
-    try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/customers/user/${user._id}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          console.warn('Unauthorized access to customer data - session may have expired');
-          return;
-        }
-        if (response.status === 404) return;
-        throw new Error('Failed to fetch customer data');
-      }
-
-      const customerData = await response.json();
-      setCustomerId(customerData._id);
-
-      const liked = customerData.likedEvents?.some(id => id.toString() === eventId);
-      setIsLiked(liked);
-
-      const favorited = customerData.Favorites?.some(id => id.toString() === eventId);
-      setIsFavorited(favorited);
-    } catch (err) {
-      console.error('Error fetching customer data:', err);
-    }
-  };
+  const isLiked = customerData?.likedEvents?.some(id => id.toString() === eventId) || false;
+  const isFavorited = customerData?.Favorites?.some(id => id.toString() === eventId) || false;
 
   const handleFavoriteToggle = async () => {
     if (!user) {
@@ -119,30 +54,16 @@ export default function EventDetailsPage() {
       return;
     }
 
-    if (!customerId || favoritingInProgress) return;
+    if (!customerData?._id) return;
 
     try {
-      setFavoritingInProgress(true);
-      const endpoint = `${process.env.NEXT_PUBLIC_BACKEND_URI}/customers/${customerId}/favorite-event`;
-      const method = isFavorited ? 'DELETE' : 'POST';
-
-      const response = await fetch(endpoint, {
-        method: method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ eventId: event._id })
+      await toggleFavoriteMutation.mutateAsync({
+        customerId: customerData._id,
+        eventId: event._id,
+        isFavorite: isFavorited
       });
-
-      if (!response.ok) throw new Error('Failed to update favorite status');
-
-      setIsFavorited(!isFavorited);
-
     } catch (err) {
       console.error('Error toggling favorite:', err);
-    } finally {
-      setFavoritingInProgress(false);
     }
   };
 
@@ -152,47 +73,17 @@ export default function EventDetailsPage() {
       return;
     }
 
-    if (!customerId || likingInProgress) return;
+    if (!customerData?._id) return;
 
     try {
-      setLikingInProgress(true);
-      const endpoint = `${process.env.NEXT_PUBLIC_BACKEND_URI}/customers/${customerId}/like-event`;
-      const method = isLiked ? 'DELETE' : 'POST';
-
-      const response = await fetch(endpoint, {
-        method: method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ eventId: event._id })
+      await toggleLikeMutation.mutateAsync({
+        customerId: customerData._id,
+        eventId: event._id,
+        isLiked: isLiked
       });
-
-      if (!response.ok) throw new Error('Failed to update like status');
-
-      setIsLiked(!isLiked);
-      setEvent(prev => ({
-        ...prev,
-        likes: (prev.likes || 0) + (isLiked ? -1 : 1)
-      }));
-
     } catch (err) {
       console.error('Error toggling like:', err);
-    } finally {
-      setLikingInProgress(false);
     }
-  };
-
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
-    });
-  };
-
-  const formatTime = (dateString) => {
-    return new Date(dateString).toLocaleTimeString('en-US', {
-      hour: 'numeric', minute: '2-digit', hour12: true
-    });
   };
 
   const getMapUrl = (venueData) => {
@@ -205,6 +96,9 @@ export default function EventDetailsPage() {
     if (venueData?.mapLink) return venueData.mapLink;
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((venueData?.name || '') + ' ' + (venueData?.location || ''))}`;
   };
+
+  const loading = eventLoading || (user && token && customerLoading);
+  const error = eventError;
 
   if (loading) {
     return (
@@ -220,7 +114,9 @@ export default function EventDetailsPage() {
         <div className="text-center max-w-md bg-gradient-to-br from-card to-background p-8 rounded-2xl border-2 border-primary/20 shadow-xl">
           <Crown className="w-16 h-16 text-primary mx-auto mb-4" />
           <h2 className="text-2xl font-black text-foreground mb-2">Event Not Found</h2>
-          <p className="text-muted-foreground mb-6">{error || 'This event could not be loaded'}</p>
+          <p className="text-muted-foreground mb-6">
+            {'No such event was found.'}
+          </p>
           <button
             onClick={() => router.push('/')}
             className="px-6 py-3 bg-gradient-to-r from-primary to-primary-dark text-primary-foreground rounded-xl hover:from-primary-light hover:to-primary transition-all font-bold shadow-lg shadow-primary/30"
@@ -237,10 +133,10 @@ export default function EventDetailsPage() {
       <Navbar />
 
       {/* Hero Section */}
-      <div className="relative h-[700px] w-full overflow-hidden bg-background">
+      <div className="relative h-[625px] w-full overflow-hidden bg-background">
         <div className="absolute inset-0">
           <img
-            src={event.landscapeImage || event.portraitImage}
+            src={event.images?.landscapeImage || event.images?.portraitImage || event.landscapeImage || event.portraitImage || event.image || event.posterURL}
             alt={event.name}
             className="w-full h-full object-cover opacity-40"
             onError={(e) => {
@@ -263,7 +159,7 @@ export default function EventDetailsPage() {
             <div className="space-y-5 max-w-3xl">
               <div className="flex flex-wrap items-center gap-3">
                 <span className="px-4 py-1.5 bg-gradient-to-r from-primary/20 to-primary-dark/20 text-primary border-2 border-primary/40 rounded-full text-xs font-black uppercase tracking-wider backdrop-blur-sm shadow-lg shadow-primary/10">
-                  {event.category || event.category || 'Event'}
+                  {event.category || 'Event'}
                 </span>
                 {event.status === 'ACTIVE' && (
                   <span className="flex items-center gap-2 text-accent-foreground text-xs font-black px-4 py-1.5 bg-gradient-to-r from-accent/20 to-accent-dark/20 border-2 border-accent/40 rounded-full shadow-lg shadow-accent/10 uppercase tracking-wider">
@@ -301,7 +197,7 @@ export default function EventDetailsPage() {
                 <>
                   <button
                     onClick={handleLikeToggle}
-                    disabled={likingInProgress}
+                    disabled={toggleLikeMutation.isPending}
                     className={`group p-4 rounded-full backdrop-blur-md border-2 transition-all duration-300 shadow-lg ${isLiked
                       ? 'bg-gradient-to-r from-primary/20 to-primary-dark/20 border-primary text-primary shadow-primary/30'
                       : 'bg-card/60 border-primary/30 text-primary hover:bg-card hover:border-primary shadow-primary/10'
@@ -313,7 +209,7 @@ export default function EventDetailsPage() {
 
                   <button
                     onClick={handleFavoriteToggle}
-                    disabled={favoritingInProgress}
+                    disabled={toggleFavoriteMutation.isPending}
                     className={`group p-4 rounded-full backdrop-blur-md border-2 transition-all duration-300 shadow-lg ${isFavorited
                       ? 'bg-gradient-to-r from-yellow-500/20 to-yellow-600/20 border-yellow-500 text-yellow-500 shadow-yellow-500/30'
                       : 'bg-card/60 border-primary/30 text-primary hover:bg-card hover:border-primary shadow-primary/10'
@@ -525,7 +421,7 @@ export default function EventDetailsPage() {
                     disabled={isOver}
                     className={`w-full py-4 font-black rounded-xl shadow-lg transition-all transform flex items-center justify-center gap-3 uppercase tracking-wider text-sm border-2 ${isOver
                       ? 'bg-muted text-muted-foreground border-muted cursor-not-allowed opacity-70'
-                      : 'bg-gradient-to-r from-primary to-primary-dark hover:from-primary-light hover:to-primary text-primary-foreground border-primary hover:scale-[1.02] active:scale-[0.98] shadow-primary/30'
+                      : 'bg-gradient-to-r from-primary to-primary-dark hover:from-primary-light hover:to-primary text-primary-foreground border-primary hover:scale-[1.02] active:scale-[0.98] shadow-primary/30 hover:cursor-pointer'
                       }`}
                   >
                     <Ticket className="w-5 h-5" />

@@ -9,76 +9,30 @@ import { useAuth } from "../../../../context/AuthContext";
 import { ArrowLeft, ShoppingCart, Loader2, MapPin, Calendar, Clock, Ticket, CheckCircle, Crown, Sparkles } from "lucide-react";
 import { io } from "socket.io-client";
 import RoleGuard from "@/app/components/RoleGuard";
+import { formatDate, formatTime } from "@/app/utils/dateUtils";
 
-function getSafeId(data) {
-  if (!data) return null;
-  if (typeof data === "string") return data;
-  if (data.$oid) return data.$oid;
-  if (data._id) return typeof data._id === "string" ? data._id : getSafeId(data._id);
-  if (data.id) return typeof data.id === "string" ? data.id : getSafeId(data.id);
-  return null;
-}
+import { useEventDetails, useEventSeats, useLockSeats, getSafeId } from "../../../../hooks/useCustomer";
+import { useQueryClient } from "@tanstack/react-query";
 
 export default function EventSeatingPage() {
   const params = useParams();
   const router = useRouter();
   const { user, token } = useAuth();
-
-  const [event, setEvent] = useState(null);
-  const [venue, setVenue] = useState(null);
-  const [seats, setSeats] = useState([]);
-  const [selectedSeats, setSelectedSeats] = useState(new Set());
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [isLocking, setIsLocking] = useState(false);
-  const [socket, setSocket] = useState(null);
+  const queryClient = useQueryClient();
 
   const eventId = params?.id ? getSafeId(params.id) : null;
+  const role = user?.role || 'CUSTOMER';
+  const isPOS = role === 'TICKETING';
 
-  useEffect(() => {
-    if (!eventId) return;
+  const { data: eventDetails, isLoading: eventLoading, error: eventError } = useEventDetails(eventId, role);
+  const { data: seats = [], isLoading: seatsLoading, error: seatsError } = useEventSeats(eventId);
+  const lockSeatsMutation = useLockSeats();
 
-    const load = async () => {
-      try {
-        setLoading(true);
-        setError(null);
+  const [selectedSeats, setSelectedSeats] = useState(new Set());
+  const [socket, setSocket] = useState(null);
 
-        const base = process.env.NEXT_PUBLIC_BACKEND_URI;
-
-        const role = user?.role || 'CUSTOMER';
-        const eventRes = await fetch(`${base}/events/${eventId}?role=${role}`);
-        if (!eventRes.ok) throw new Error("Failed to fetch event details");
-        const eventData = await eventRes.json();
-        const now = new Date();
-        if (eventData.endDateTime && new Date(eventData.endDateTime) < now) {
-          // throw new Error("This event has ended. Booking is no longer available.");
-          return;
-        }
-        setEvent(eventData);
-
-        const venueId = getSafeId(eventData.venueId) || getSafeId(eventData.venue);
-        if (!venueId) throw new Error("Event has no venue");
-
-        const venueRes = await fetch(`${base}/venue/${venueId}`);
-        if (!venueRes.ok) throw new Error("Failed to fetch venue");
-        const venueData = await venueRes.json();
-        setVenue(venueData);
-
-        const seatsRes = await fetch(`${base}/seats/event/${eventId}`);
-        if (!seatsRes.ok) throw new Error("Failed to fetch seats");
-        const seatsPayload = await seatsRes.json();
-        setSeats(seatsPayload.seats || []);
-
-      } catch (err) {
-        console.error("Error loading seating data:", err);
-        setError(err.message || "Failed to load seating map");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    load();
-  }, [eventId]);
+  const event = eventDetails?.event;
+  const venue = eventDetails?.venue;
 
   useEffect(() => {
     if (!eventId) return;
@@ -94,9 +48,12 @@ export default function EventSeatingPage() {
 
     newSocket.on("seatStatusChanged", ({ seatId, status }) => {
       console.log(`Seat ${seatId} changed to ${status}`);
-      setSeats((currentSeats) =>
-        currentSeats.map((s) => (getSafeId(s._id) === seatId ? { ...s, status } : s))
-      );
+
+      // Update the TanStack Query cache for seats
+      queryClient.setQueryData(["event-seats", eventId], (oldData) => {
+        if (!oldData) return oldData;
+        return oldData.map((s) => (getSafeId(s._id) === seatId ? { ...s, status } : s));
+      });
 
       if (status === "AVAILABLE" || status === "SOLD" || status === "BLOCKED") {
         setSelectedSeats((prev) => {
@@ -116,7 +73,7 @@ export default function EventSeatingPage() {
       newSocket.emit("leave-event", eventId);
       newSocket.disconnect();
     };
-  }, [eventId]);
+  }, [eventId, queryClient]);
 
   const seatIdStr = (s) => getSafeId(s?._id) ?? s?._id;
 
@@ -218,69 +175,38 @@ export default function EventSeatingPage() {
     }
 
     try {
-      setIsLocking(true);
       const eid = getSafeId(event);
       const seatIds = Array.from(selectedSeats);
 
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_BACKEND_URI}/seats/lock-multiple`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            eventSeatIds: seatIds,
-            userId: userId,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.message || "Some seats are no longer available. Please refresh and try again.");
+      if (isPOS) {
+        // POS staff: redirect back to POS sell page with seat selection
+        const seatIdsParam = seatIds.join(",");
+        router.push(`/pos/sell?eventId=${eid}&seatIds=${encodeURIComponent(seatIdsParam)}`);
+        return;
       }
+
+      await lockSeatsMutation.mutateAsync({
+        eventSeatIds: seatIds,
+        userId: userId,
+      });
 
       const seatIdsParam = seatIds.join(",");
       router.push(`/checkout?eventId=${eid}&seatIds=${encodeURIComponent(seatIdsParam)}`);
     } catch (err) {
       console.error("Checkout locking error:", err);
       alert(err.message);
-      const base = process.env.NEXT_PUBLIC_BACKEND_URI;
-      const seatsRes = await fetch(`${base}/seats/event/${eventId}`);
-      if (seatsRes.ok) {
-        const seatsPayload = await seatsRes.json();
-        setSeats(seatsPayload.seats || []);
-      }
-    } finally {
-      setIsLocking(false);
+      // Refetch seats on error to get latest status
+      queryClient.invalidateQueries({ queryKey: ["event-seats", eventId] });
     }
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return "";
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      weekday: 'short',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
-
-  const formatTime = (dateString) => {
-    if (!dateString) return "";
-    const date = new Date(dateString);
-    return date.toLocaleTimeString("en-US", {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
+  const loading = eventLoading || seatsLoading;
+  const error = eventError?.message || seatsError?.message;
+  const isLocking = lockSeatsMutation.isPending;
 
   if (loading) {
     return (
-      <RoleGuard allowedRoles={["CUSTOMER"]}>
+      <RoleGuard allowedRoles={["CUSTOMER", "TICKETING"]}>
         <div className="min-h-screen bg-background">
           <Navbar />
           <div className="flex items-center justify-center" style={{ minHeight: 'calc(100vh - 200px)' }}>
@@ -297,7 +223,7 @@ export default function EventSeatingPage() {
 
   if (error || !event || !venue) {
     return (
-      <RoleGuard allowedRoles={["CUSTOMER"]}>
+      <RoleGuard allowedRoles={["CUSTOMER", "TICKETING"]}>
         <div className="min-h-screen bg-background">
           <Navbar />
           <div className="flex items-center justify-center" style={{ minHeight: 'calc(100vh - 200px)' }}>
@@ -323,7 +249,7 @@ export default function EventSeatingPage() {
   }
 
   return (
-    <RoleGuard allowedRoles={["CUSTOMER"]}>
+    <RoleGuard allowedRoles={["CUSTOMER", "TICKETING"]}>
       <div className="min-h-screen bg-background">
         <Navbar />
 
@@ -431,7 +357,7 @@ export default function EventSeatingPage() {
                 ) : (
                   <>
                     <ShoppingCart className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                    <span>Confirm Selection</span>
+                    <span>{isPOS ? "Continue to POS" : "Confirm Selection"}</span>
                   </>
                 )}
               </button>

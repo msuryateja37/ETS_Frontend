@@ -8,31 +8,78 @@ import AdminEventForm from '@/app/components/AdminEventForm';
 import RoleGuard from '@/app/components/RoleGuard';
 import Navbar from '@/app/components/Navbar';
 
+import { useCreateEvent, useAssignGateStaff } from '../../../../hooks/useAdmin';
+
 export default function CreateEventPage() {
     const router = useRouter();
-    const { token } = useAuth();
+    const createEventMutation = useCreateEvent();
+    const assignGateStaffMutation = useAssignGateStaff();
 
     const handleSubmit = async (formData) => {
         try {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify(formData),
+            // Separate gate staff from event data
+            const {
+                gateStaff,
+                portraitImageFile,
+                landscapeImageFile,
+                ...eventFields
+            } = formData;
+
+            // Build multipart form-data payload for event (supports file uploads & URLs)
+            const body = new FormData();
+
+            Object.entries(eventFields).forEach(([key, value]) => {
+                if (value === undefined || value === null || key === 'images') return;
+
+                if (key === 'zones' || key === 'eventContactDetails') {
+                    body.append(key, JSON.stringify(value));
+                } else {
+                    body.append(key, String(value));
+                }
             });
 
-            if (response.ok) {
-                router.push('/admin/events');
-            } else {
-                console.error('Failed to create event');
-                const errorData = await response.json();
-                alert(`Error creating event: ${errorData.message || 'Unknown error'}`);
+            if (portraitImageFile) {
+                body.append('portraitImage', portraitImageFile);
             }
+            if (landscapeImageFile) {
+                body.append('landscapeImage', landscapeImageFile);
+            }
+
+            // 1. Create Event
+            const newEvent = await createEventMutation.mutateAsync(body);
+            const eventId = newEvent._id;
+
+            // 2. Create Gate Staff Assignments
+            if (gateStaff && gateStaff.length > 0) {
+                console.log('Assigning Gate Staff:', gateStaff);
+                try {
+                    const assignmentPromises = gateStaff.map(staff => {
+                        const userId = typeof staff.userId === 'object' ? staff.userId._id : staff.userId;
+
+                        if (!userId) {
+                            console.error('Invalid userId for staff:', staff);
+                            return Promise.resolve(); // Skip invalid staff
+                        }
+
+                        return assignGateStaffMutation.mutateAsync({
+                            userId: userId,
+                            gateStaffId: staff._id,
+                            eventId: eventId,
+                            gateName: staff.gateName
+                        });
+                    });
+
+                    await Promise.all(assignmentPromises);
+                } catch (assignmentError) {
+                    console.error('Error assigning gate staff:', assignmentError);
+                    alert('Event created, but there was an error assigning some gate staff.');
+                }
+            }
+
+            router.push('/admin/events');
         } catch (error) {
             console.error('Error creating event:', error);
-            alert('An error occurred while creating the event.');
+            alert(error.message || 'An error occurred while creating the event.');
         }
     };
 

@@ -2,15 +2,23 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
+import {
+  useLogin,
+  useSignup,
+  useRequestOtp,
+  useVerifyOtp
+} from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Crown, Shield } from "lucide-react";
 
 export default function AuthLoginPage() {
-  const { user, loading, login, signup, requestOtp, verifyOtp } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [isLogin, setIsLogin] = useState(true);
   const [useOtp, setUseOtp] = useState(true);
   const [otpStep, setOtpStep] = useState("email");
+  const [rememberMe, setRememberMe] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -21,17 +29,34 @@ export default function AuthLoginPage() {
     role: "CUSTOMER",
   });
   const [error, setError] = useState("");
-  const [otpLoading, setOtpLoading] = useState(false);
 
-  // If already logged in, redirect to home
+  // Mutations
+  const loginMutation = useLogin();
+  const signupMutation = useSignup();
+  const requestOtpMutation = useRequestOtp();
+  const verifyOtpMutation = useVerifyOtp();
+
+  const isPending = loginMutation.isPending ||
+    signupMutation.isPending ||
+    requestOtpMutation.isPending ||
+    verifyOtpMutation.isPending;
+
+  // Role-based redirect helper
+  const getRoleRedirect = (role) => {
+    if (role === "TICKETING") return "/pos";
+    return "/";
+  };
+
+  // If already logged in, redirect to role-appropriate home
   useEffect(() => {
-    if (user && !loading) {
-      router.replace("/");
+    if (user && !authLoading) {
+      router.replace(getRoleRedirect(user.role));
     }
-  }, [user, loading, router]);
+  }, [user, authLoading, router]);
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const value = e.target.name === "email" ? e.target.value.toLowerCase() : e.target.value;
+    setFormData({ ...formData, [e.target.name]: value });
   };
 
   const validateForm = () => {
@@ -72,17 +97,21 @@ export default function AuthLoginPage() {
       return;
     }
 
-    let res;
-    if (isLogin) {
-      res = await login(formData.email, formData.password, formData.rememberMe);
-    } else {
-      const { confirmPassword, ...signupData } = formData;
-      res = await signup(signupData);
-    }
-    if (!res.success) {
-      setError(res.error);
-    } else {
-      router.push("/");
+    try {
+      let result;
+      if (isLogin) {
+        result = await loginMutation.mutateAsync({
+          email: formData.email,
+          password: formData.password,
+          rememberMe
+        });
+      } else {
+        const { confirmPassword, ...signupData } = formData;
+        result = await signupMutation.mutateAsync(signupData);
+      }
+      router.push(getRoleRedirect(result?.user?.role));
+    } catch (err) {
+      setError(err.message);
     }
   };
 
@@ -100,14 +129,12 @@ export default function AuthLoginPage() {
       return;
     }
 
-    setOtpLoading(true);
-    const res = await requestOtp(formData.email);
-    setOtpLoading(false);
-    if (res.success) {
+    try {
+      await requestOtpMutation.mutateAsync(formData.email);
       setOtpStep("verify");
       setFormData((prev) => ({ ...prev, otp: "" }));
-    } else {
-      setError(res.error);
+    } catch (err) {
+      setError(err.message);
     }
   };
 
@@ -117,19 +144,19 @@ export default function AuthLoginPage() {
       setError("Enter the code from your email");
       return;
     }
-    setOtpLoading(true);
-    const res = await verifyOtp(
-      formData.email,
-      formData.otp,
-      formData.name,
-      formData.phone,
-      formData.role
-    );
-    setOtpLoading(false);
-    if (!res.success) {
-      setError(res.error);
-    } else {
-      router.push("/");
+
+    try {
+      const result = await verifyOtpMutation.mutateAsync({
+        email: formData.email,
+        otp: formData.otp,
+        name: formData.name,
+        phone: formData.phone,
+        role: formData.role,
+        rememberMe
+      });
+      router.push(getRoleRedirect(result?.user?.role));
+    } catch (err) {
+      setError(err.message);
     }
   };
 
@@ -138,7 +165,7 @@ export default function AuthLoginPage() {
     setError("");
   };
 
-  if (loading) {
+  if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
@@ -190,20 +217,20 @@ export default function AuthLoginPage() {
             </h1>
 
             <div className="h-1 w-24 bg-gradient-to-r from-primary to-primary-dark mx-auto rounded-full shadow-md shadow-primary/50"></div>
-              <p className="text-lg text-muted-foreground font-medium leading-relaxed px-4">
-                Experience the pinnacle of event entertainment. Secure your place at the most exclusive venues.
-              </p>
-            </div>
+            <p className="text-lg text-muted-foreground font-medium leading-relaxed px-4">
+              Experience the pinnacle of event entertainment. Secure your place at the most exclusive venues.
+            </p>
+          </div>
 
-            {/* Features */}
-            <div className="pt-8 grid grid-cols-2 gap-8">
-              <div className="space-y-2">
-                <div className="text-sm text-muted-foreground uppercase tracking-widest font-bold border-r border-primary/20 pr-2">Premium Seats</div>
-              </div>
-              <div className="space-y-2">
-                <div className="text-sm text-muted-foreground uppercase tracking-widest font-bold">Exclusive Events</div>
-              </div>
+          {/* Features */}
+          <div className="pt-8 grid grid-cols-2 gap-8">
+            <div className="space-y-2">
+              <div className="text-sm text-muted-foreground uppercase tracking-widest font-bold border-r border-primary/20 pr-2">Premium Seats</div>
             </div>
+            <div className="space-y-2">
+              <div className="text-sm text-muted-foreground uppercase tracking-widest font-bold">Exclusive Events</div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -296,10 +323,10 @@ export default function AuthLoginPage() {
                   </div>
                   <button
                     onClick={handleSendOtp}
-                    disabled={otpLoading}
+                    disabled={isPending}
                     className="w-full flex justify-center py-4 px-4 border-2 border-primary rounded-xl shadow-md shadow-primary/30 text-sm font-black text-primary-foreground bg-gradient-to-r from-primary to-primary-dark hover:from-primary-light hover:to-primary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-all transform active:scale-[0.98] disabled:opacity-50 uppercase tracking-wider"
                   >
-                    {otpLoading ? "Sending Code..." : "Send Verification Code"}
+                    {requestOtpMutation.isPending ? "Sending Code..." : "Send Verification Code"}
                   </button>
                 </>
               ) : (
@@ -319,12 +346,31 @@ export default function AuthLoginPage() {
                       className="block w-full rounded-xl border-2 border-primary/20 bg-card-elevated text-foreground shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 sm:text-xl p-5 text-center tracking-[0.5em] font-mono transition-all"
                     />
                   </div>
+                  <label className="flex items-center gap-3 cursor-pointer group select-none">
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        checked={rememberMe}
+                        onChange={(e) => setRememberMe(e.target.checked)}
+                        className="sr-only"
+                      />
+                      <div className={`w-5 h-5 rounded-md border-2 transition-all ${rememberMe ? 'bg-primary border-primary' : 'border-primary/30 bg-card-elevated group-hover:border-primary/60'}`}>
+                        {rememberMe && (
+                          <svg className="w-3 h-3 text-primary-foreground absolute top-0.5 left-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </div>
+                    </div>
+                    <span className="text-sm font-bold text-muted-foreground group-hover:text-foreground transition-colors">Keep me signed in</span>
+                  </label>
+
                   <button
                     onClick={handleVerifyOtp}
-                    disabled={otpLoading || formData.otp.length < 6}
+                    disabled={isPending || formData.otp.length < 6}
                     className="w-full flex justify-center py-4 px-4 border-2 border-primary rounded-xl shadow-md shadow-primary/30 text-sm font-black text-primary-foreground bg-gradient-to-r from-primary to-primary-dark hover:from-primary-light hover:to-primary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-all transform active:scale-[0.98] disabled:opacity-50 uppercase tracking-wider"
                   >
-                    {otpLoading ? "Verifying..." : "Verify & Sign In"}
+                    {verifyOtpMutation.isPending ? "Verifying..." : "Verify & Sign In"}
                   </button>
                 </>
               )}
@@ -360,6 +406,14 @@ export default function AuthLoginPage() {
               <div className="relative">
                 <div className="flex justify-between items-center mb-2">
                   <label className="block text-xs font-black text-primary uppercase tracking-widest">Password</label>
+                  {isLogin && (
+                    <Link
+                      href="/auth/forgot-password"
+                      className="text-xs font-bold text-muted-foreground hover:text-primary transition-colors uppercase tracking-wider"
+                    >
+                      Forgot Password?
+                    </Link>
+                  )}
                 </div>
                 <input
                   type="password"
@@ -371,12 +425,48 @@ export default function AuthLoginPage() {
                 />
               </div>
 
+              {!isLogin && (
+                <div>
+                  <label className="block text-xs font-black text-primary uppercase tracking-widest mb-2">Confirm Password</label>
+                  <input
+                    type="password"
+                    name="confirmPassword"
+                    value={formData.confirmPassword}
+                    onChange={handleChange}
+                    placeholder="••••••••"
+                    className="block w-full rounded-xl border-2 border-primary/20 bg-card-elevated text-foreground placeholder-muted-foreground shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 sm:text-sm p-4 transition-all"
+                  />
+                </div>
+              )}
+
+              {isLogin && (
+                <label className="flex items-center gap-3 cursor-pointer group select-none">
+                  <div className="relative">
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                      className="sr-only"
+                    />
+                    <div className={`w-5 h-5 rounded-md border-2 transition-all ${rememberMe ? 'bg-primary border-primary' : 'border-primary/30 bg-card-elevated group-hover:border-primary/60'}`}>
+                      {rememberMe && (
+                        <svg className="w-3 h-3 text-primary-foreground absolute top-0.5 left-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </div>
+                  </div>
+                  <span className="text-sm font-bold text-muted-foreground group-hover:text-foreground transition-colors">Keep me signed in</span>
+                </label>
+              )}
+
               <div className="pt-2">
                 <button
                   onClick={handlePasswordSubmit}
-                  className="w-full flex justify-center py-4 px-4 border-2 border-primary rounded-xl shadow-md shadow-primary/30 text-sm font-black text-primary-foreground bg-gradient-to-r from-primary to-primary-dark hover:from-primary-light hover:to-primary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-all transform active:scale-[0.98] uppercase tracking-wider"
+                  disabled={isPending}
+                  className="w-full flex justify-center py-4 px-4 border-2 border-primary rounded-xl shadow-md shadow-primary/30 text-sm font-black text-primary-foreground bg-gradient-to-r from-primary to-primary-dark hover:from-primary-light hover:to-primary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-all transform active:scale-[0.98] disabled:opacity-50 uppercase tracking-wider"
                 >
-                  {isLogin ? "Sign In" : "Create Account"}
+                  {isPending ? "Processing..." : (isLogin ? "Sign In" : "Create Account")}
                 </button>
               </div>
             </div>
@@ -392,7 +482,7 @@ export default function AuthLoginPage() {
               className="text-sm font-bold text-muted-foreground hover:text-foreground flex items-center justify-center gap-2 mx-auto transition-colors"
             >
               <span>{isLogin ? "New to Emperor's Palace?" : "Already have an account?"}</span>
-              <span className="text-primary font-black uppercase tracking-wider">{isLogin ? "Sign Up" : "Log In"}</span>
+              <span className="text-primary font-black uppercase tracking-wider">{isLogin ? "Sign Up" : "Sign In"}</span>
             </button>
           </div>
         </main>

@@ -1,123 +1,61 @@
 "use client";
 export const dynamic = "force-dynamic";
 
-import { useState, useEffect, memo, useMemo } from "react";
+import { useState, memo, useMemo } from "react";
 import { Calendar, MapPin, Heart, ChevronRight, Crown, ArrowLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Navbar from "../../components/Navbar";
 import Footer from "../../components/Footer";
 import { useAuth } from "@/context/AuthContext";
 import { formatLikes } from "../../utils/formatLikes";
+import { formatDate } from "../../utils/dateUtils";
+
+import { usePastEvents, useCustomerProfile, useToggleLike, getSafeId } from "../../../hooks/useCustomer";
 
 export default function PastEventsPage() {
     const { user, token } = useAuth();
     const router = useRouter();
-    const [events, setEvents] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [likedEvents, setLikedEvents] = useState(new Set());
-    const [likingInProgress, setLikingInProgress] = useState(new Set());
-    const [customerId, setCustomerId] = useState(null);
 
-    useEffect(() => {
-        fetchPastEvents();
-        if (user && token) {
-            fetchCustomerData();
-        }
-    }, [user, token]);
+    const { data: events = [], isLoading: eventsLoading, error: eventsError } = usePastEvents();
+    const { data: customerData, isLoading: customerLoading } = useCustomerProfile(getSafeId(user));
+    const toggleLikeMutation = useToggleLike();
 
-    const fetchPastEvents = async () => {
-        try {
-            setLoading(true);
-            setError(null);
+    const likedEvents = useMemo(() => new Set(customerData?.likedEvents?.map(id => id.toString()) || []), [customerData]);
 
-            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events?timeframe=past`);
-            if (!response.ok) {
-                throw new Error('Failed to fetch past events');
-            }
-
-            const data = await response.json();
-            setEvents(data || []);
-        } catch (err) {
-            console.error('Error fetching past events:', err);
-            setError(err.message);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const fetchCustomerData = async () => {
-        try {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/customers/user/${user._id}`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-            if (response.ok) {
-                const customerData = await response.json();
-                setCustomerId(customerData._id);
-                const likedEventIds = new Set(customerData.likedEvents?.map(id => id.toString()) || []);
-                setLikedEvents(likedEventIds);
-            }
-        } catch (err) {
-            console.error('Error fetching customer data:', err);
-        }
-    };
+    const [searchQuery, setSearchQuery] = useState("");
 
     const handleLikeToggle = async (eventId, e) => {
         e.stopPropagation();
-        if (!user || !customerId || likingInProgress.has(eventId)) return;
+        if (!user || !customerData?._id) return;
 
         try {
-            setLikingInProgress(prev => new Set([...prev, eventId]));
-            const isLiked = likedEvents.has(eventId);
-            const endpoint = `${process.env.NEXT_PUBLIC_BACKEND_URI}/customers/${customerId}/like-event`;
-            const method = isLiked ? 'DELETE' : 'POST';
-
-            const response = await fetch(endpoint, {
-                method: method,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({ eventId: eventId })
+            await toggleLikeMutation.mutateAsync({
+                customerId: customerData._id,
+                eventId,
+                isLiked: likedEvents.has(eventId)
             });
-
-            if (response.ok) {
-                setLikedEvents(prev => {
-                    const newSet = new Set(prev);
-                    if (isLiked) newSet.delete(eventId);
-                    else newSet.add(eventId);
-                    return newSet;
-                });
-
-                setEvents(prevEvents =>
-                    prevEvents.map(event =>
-                        event._id === eventId
-                            ? { ...event, likes: (event.likes || 0) + (isLiked ? -1 : 1) }
-                            : event
-                    )
-                );
-            }
         } catch (err) {
             console.error('Error toggling like:', err);
-        } finally {
-            setLikingInProgress(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(eventId);
-                return newSet;
-            });
         }
     };
 
-    const formatDate = (dateString) => {
-        const date = new Date(dateString);
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    };
+    const filteredEvents = events.filter(event => {
+        const searchLower = searchQuery.toLowerCase();
+        const dateStr = formatDate(event.startDateTime || event.startDate).toLowerCase();
+        return (
+            event.name?.toLowerCase().includes(searchLower) ||
+            event.category?.toLowerCase().includes(searchLower) ||
+            (event.venueId?.name || event.venue?.name)?.toLowerCase().includes(searchLower) ||
+            dateStr.includes(searchLower)
+        );
+    });
 
     const handleEventClick = (eventId) => {
         router.push(`/events/${eventId}`);
     };
+
+    const loading = eventsLoading || customerLoading;
+    const error = eventsError?.message;
 
     if (loading) {
         return (
@@ -132,50 +70,73 @@ export default function PastEventsPage() {
 
     return (
         <div className="min-h-screen bg-background flex flex-col">
-            <Navbar />
+            <Navbar
+                showSearch={true}
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
+            />
 
             <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
 
                 <div className="mb-8">
                     <div className="flex items-center gap-4 mb-6">
-                    <button
-                        onClick={() => router.back()}
-                        className="group flex items-center gap-2 px-5 py-2.5 bg-card border-2 border-primary/30 rounded-full text-primary font-bold hover:bg-background-hover hover:border-primary transition-all shadow-lg uppercase tracking-wider"
-                    >
-                        <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
-                        <span>Back</span>
-                    </button>
+                        <button
+                            onClick={() => router.back()}
+                            className="group flex items-center gap-2 px-5 py-2.5 bg-card border-2 border-primary/30 rounded-full text-primary font-bold hover:bg-background-hover hover:border-primary transition-all shadow-lg uppercase tracking-wider"
+                        >
+                            <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
+                            <span>Back</span>
+                        </button>
                     </div>
 
                     <div className="flex items-center gap-5">
-                    <div className="w-16 h-16 bg-gradient-to-br from-primary to-primary-dark rounded-2xl flex items-center justify-center shadow-lg shadow-primary/30 border-2 border-primary">
-                        <Calendar className="w-8 h-8 text-primary-foreground fill-primary-foreground" />
-                    </div>
-                    <div>
-                        <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary to-primary-light tracking-tight uppercase">
-                        Past Events
-                        </h1>
-                        <p className="text-muted-foreground mt-4 text-lg">
-                        Relive the memories from our previous experiences.
-                        </p>
-                    </div>
+                        <div className="w-16 h-16 bg-gradient-to-br from-primary to-primary-dark rounded-2xl flex items-center justify-center shadow-lg shadow-primary/30 border-2 border-primary">
+                            <Calendar className="w-8 h-8 text-primary-foreground fill-primary-foreground" />
+                        </div>
+                        <div>
+                            <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary to-primary-light tracking-tight uppercase">
+                                Past Events
+                            </h1>
+                            <p className="text-muted-foreground mt-4 text-lg">
+                                {filteredEvents.length === 0 && searchQuery
+                                    ? "No matching memories found"
+                                    : "Relive the memories from our previous experiences."
+                                }
+                            </p>
+                        </div>
                     </div>
                 </div>
 
                 {events.length > 0 ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-                        {events.map((event) => (
-                            <EventCard
-                                key={event._id}
-                                event={event}
-                                onClick={() => handleEventClick(event._id)}
-                                onLike={(e) => handleLikeToggle(event._id, e)}
-                                isLiked={likedEvents.has(event._id)}
-                                isLiking={likingInProgress.has(event._id)}
-                                formatDate={formatDate}
-                            />
-                        ))}
-                    </div>
+                    filteredEvents.length > 0 ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                            {filteredEvents.map((event) => (
+                                <EventCard
+                                    key={event._id}
+                                    event={event}
+                                    onClick={() => handleEventClick(event._id)}
+                                    onLike={(e) => handleLikeToggle(event._id, e)}
+                                    isLiked={likedEvents.has(event._id)}
+                                    isLiking={toggleLikeMutation.isPending}
+                                    formatDate={formatDate}
+                                />
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="py-24 text-center">
+                            <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                                <Calendar className="w-10 h-10 text-primary/40" />
+                            </div>
+                            <h2 className="text-2xl font-bold text-foreground mb-2">No matching events</h2>
+                            <p className="text-muted-foreground mb-8">We couldn't find any sessions matching your search.</p>
+                            <button
+                                onClick={() => setSearchQuery("")}
+                                className="px-8 py-3 bg-primary text-primary-foreground rounded-xl font-bold hover:bg-primary-light transition-all"
+                            >
+                                Clear Search
+                            </button>
+                        </div>
+                    )
                 ) : (
                     <div className="py-24 text-center">
                         <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -198,9 +159,13 @@ const EventCard = memo(({ event, onClick, onLike, isLiked, isLiking, formatDate 
 
     const eventImageUrl = useMemo(() => {
         if (!event) return '';
-        return event.landscapeImage ||
+        return event.images?.landscapeImage ||
+            event.images?.portraitImage ||
+            event.landscapeImage ||
             event.portraitImage ||
-            (event.images && event.images.landscape) ||
+            event.image ||
+            event.posterURL ||
+            event.images?.landscape ||
             `https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=500&auto=format&fit=crop&q=60`;
     }, [event]);
 

@@ -1,82 +1,52 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Users, Calendar, Ticket, DollarSign, TrendingUp, Settings, BarChart3, ArrowRight, Activity, ShieldCheck, Crown, Sparkles } from 'lucide-react';
 import { useAuth } from "../../context/AuthContext";
+import { useAdminDashboardData } from "../../hooks/useAdmin";
 import RoleGuard from "../components/RoleGuard";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 
 export default function AdminHomePage({ logout }) {
-  const { user, token } = useAuth();
+  const { user } = useAuth();
   const router = useRouter();
-  const [stats, setStats] = useState({
-    totalEvents: 0,
-    totalUsers: 0,
-    totalRevenue: 0,
-    activeBookings: 0
-  });
-  const [recentActivity, setRecentActivity] = useState({
-    users: [],
-    tickets: []
-  });
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchAdminStats();
-  }, []);
+  const { events, users, tickets, isLoading, isError } = useAdminDashboardData();
 
-  const fetchAdminStats = async () => {
-    try {
-      setLoading(true);
+  const stats = useMemo(() => {
+    if (!events || !users || !tickets) return {
+      totalEvents: 0,
+      totalUsers: 0,
+      totalRevenue: 0,
+      activeBookings: 0
+    };
 
-      const [eventsRes, usersRes, ticketsRes] = await Promise.all([
-        fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        }),
-        fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/user`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        }),
-        fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/tickets`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        })
-      ]);
+    return {
+      totalEvents: events.length,
+      totalUsers: users.length,
+      totalRevenue: tickets.reduce((acc, t) => acc + (t.pricePaid || 0), 0),
+      activeBookings: tickets.filter(t => t.status === 'VALID').length
+    };
+  }, [events, users, tickets]);
 
-      if (!eventsRes.ok || !usersRes.ok || !ticketsRes.ok) {
-        throw new Error("Failed to fetch statistics");
-      }
+  const recentActivity = useMemo(() => {
+    if (!users || !tickets) return { users: [], tickets: [] };
 
-      const eventsData = await eventsRes.json();
-      const usersData = await usersRes.json();
-      const ticketsData = await ticketsRes.json();
+    const latestUsers = [...users]
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, 2);
 
-      setStats({
-        totalEvents: (eventsData || []).length,
-        totalUsers: (usersData || []).length,
-        totalRevenue: (ticketsData || []).reduce((acc, t) => acc + (t.pricePaid || 0), 0),
-        activeBookings: (ticketsData || []).filter(t => t.status === 'VALID').length
-      });
+    const latestTickets = [...tickets]
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, 2);
 
-      const latestUsers = [...(usersData || [])]
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-        .slice(0, 2);
-
-      const latestTickets = [...(ticketsData || [])]
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-        .slice(0, 2);
-
-      setRecentActivity({
-        users: latestUsers,
-        tickets: latestTickets
-      });
-
-    } catch (error) {
-      console.error('Error fetching stats:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    return {
+      users: latestUsers,
+      tickets: latestTickets
+    };
+  }, [users, tickets]);
 
   const handleClickUserManagement = () => {
     router.push('/admin/users');
@@ -94,12 +64,28 @@ export default function AdminHomePage({ logout }) {
     return date.toLocaleDateString();
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-16 w-16 border-4 border-primary/20 border-t-primary mb-6"></div>
           <p className="text-foreground font-semibold text-lg">Loading Admin Dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-500 font-semibold text-lg">Error loading dashboard data.</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-4 px-4 py-2 bg-primary text-white rounded-lg"
+          >
+            Retry
+          </button>
         </div>
       </div>
     );

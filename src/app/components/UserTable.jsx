@@ -1,22 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { Edit2, Shield, Calendar, CheckCircle, XCircle } from "lucide-react";
+import { Edit2, Shield, Calendar, CheckCircle, XCircle, Trash2 } from "lucide-react";
 import RoleChangeDialog from "./RoleChange";
+import DeleteConfirmationDialog from "./DeleteConfirmationDialog";
+import { formatDate } from "../utils/dateUtils";
 
-export default function UserTable({ users, onRoleUpdate, onPermissionsUpdate, onRefresh }) {
+export default function UserTable({ users, onRoleUpdate, onPermissionsUpdate, onDeleteUser }) {
   const [selectedUser, setSelectedUser] = useState(null);
   const [showRoleDialog, setShowRoleDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
 
   const getRoleBadgeColor = (role) => {
     const colors = {
@@ -55,7 +50,32 @@ export default function UserTable({ users, onRoleUpdate, onPermissionsUpdate, on
 
   const handleCloseDialog = () => {
     setShowRoleDialog(false);
+    setShowDeleteDialog(false);
     setSelectedUser(null);
+  };
+
+  const handleOpenDeleteDialog = (user) => {
+    setSelectedUser(user);
+    setShowDeleteDialog(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!selectedUser) return;
+
+    setIsDeleting(true);
+    try {
+      const result = await onDeleteUser(selectedUser._id);
+      if (result.success) {
+        handleCloseDialog();
+      } else {
+        alert(result.error || "Failed to delete user");
+      }
+    } catch (error) {
+      console.error("Error deleting user:", error);
+      alert("An error occurred while deleting the user");
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   if (users.length === 0) {
@@ -126,11 +146,10 @@ export default function UserTable({ users, onRoleUpdate, onPermissionsUpdate, on
                     </button>
                   </td>
                   <td className="px-6 py-2 whitespace-nowrap">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      user.isActive 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-red-100 text-red-800'
-                    }`}>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${user.isActive
+                      ? 'bg-green-100 text-green-800'
+                      : 'bg-red-100 text-red-800'
+                      }`}>
                       {user.isActive ? (
                         <>
                           <CheckCircle className="w-3 h-3 mr-1" />
@@ -147,7 +166,7 @@ export default function UserTable({ users, onRoleUpdate, onPermissionsUpdate, on
                   <td className="px-6 py-2 whitespace-nowrap">
                     <div className="flex items-center text-sm text-gray-500">
                       <Calendar className="w-4 h-4 mr-1" />
-                      {formatDate(user.createdAt)}
+                      {formatDate(user.createdAt, { hour: '2-digit', minute: '2-digit' })}
                     </div>
                   </td>
                   <td className="px-6 py-2">
@@ -169,13 +188,24 @@ export default function UserTable({ users, onRoleUpdate, onPermissionsUpdate, on
                     </div>
                   </td>
                   <td className="px-6 py-2 whitespace-nowrap text-sm font-medium">
-                    <button
-                      onClick={() => handleRoleClick(user)}
-                      className="text-red-600 hover:text-red-700 flex items-center"
-                    >
-                      <Edit2 className="w-4 h-4 mr-1" />
-                      Edit
-                    </button>
+                    <div className="flex items-center gap-4">
+                      <button
+                        onClick={() => handleRoleClick(user)}
+                        className="text-primary hover:text-primary-dark flex items-center transition-colors"
+                        title="Update Role"
+                      >
+                        <Edit2 className="w-4 h-4 mr-1" />
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleOpenDeleteDialog(user)}
+                        className="text-destructive hover:text-destructive/80 flex items-center transition-colors"
+                        title="Delete User"
+                      >
+                        <Trash2 className="w-4 h-4 mr-1" />
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -184,7 +214,6 @@ export default function UserTable({ users, onRoleUpdate, onPermissionsUpdate, on
         </div>
       </div>
 
-      {/* Role Change Dialog - Only render when both conditions are true */}
       {showRoleDialog && selectedUser && (
         <RoleChangeDialog
           user={selectedUser}
@@ -192,6 +221,17 @@ export default function UserTable({ users, onRoleUpdate, onPermissionsUpdate, on
           onConfirm={handleRoleChange}
         />
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteConfirmationDialog
+        isOpen={showDeleteDialog}
+        onClose={handleCloseDialog}
+        onConfirm={handleConfirmDelete}
+        title="Remove Staff Member"
+        // message="Are you sure you want to remove this staff member from the Imperial Registry? This action will permanently revoke their access."
+        itemName={selectedUser?.name}
+        loading={isDeleting}
+      />
     </>
   );
 }

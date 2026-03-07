@@ -1,6 +1,6 @@
 "use client";
 export const dynamic = "force-dynamic";
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useState, Suspense, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
@@ -18,14 +18,7 @@ import {
 } from "lucide-react";
 import RoleGuard from "../components/RoleGuard";
 
-function getSafeId(data) {
-    if (!data) return null;
-    if (typeof data === "string") return data;
-    if (data?.$oid) return data.$oid;
-    if (data?._id) return typeof data._id === "string" ? data._id : getSafeId(data._id);
-    if (data?.id) return typeof data.id === "string" ? data.id : getSafeId(data.id);
-    return null;
-}
+import { useEventDetails, useEventSeats, useConfirmPurchase, getSafeId, useValidateLoyalty } from "../../hooks/useCustomer";
 
 function getSectionName(venue, sectionId) {
     if (!venue?.sections || !sectionId) return "";
@@ -41,68 +34,68 @@ function CheckoutContent() {
 
     const eventId = searchParams.get("eventId");
     const seatIdsParam = searchParams.get("seatIds");
+    const seatIds = useMemo(() =>
+        seatIdsParam ? seatIdsParam.split(",").map((s) => s.trim()).filter(Boolean) : []
+        , [seatIdsParam]);
 
-    const [event, setEvent] = useState(null);
-    const [venue, setVenue] = useState(null);
-    const [heldSeats, setHeldSeats] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [processing, setProcessing] = useState(false);
+    const { data: eventDetails, isLoading: eventLoading, error: eventError } = useEventDetails(eventId);
+    const { data: allSeats = [], isLoading: seatsLoading, error: seatsError } = useEventSeats(eventId);
+    const confirmPurchaseMutation = useConfirmPurchase();
+
     const [success, setSuccess] = useState(false);
+    const [loyaltyCode, setLoyaltyCode] = useState("");
+    const [loyaltyError, setLoyaltyError] = useState("");
+    const [appliedLoyaltyCode, setAppliedLoyaltyCode] = useState("");
+    const [loyaltyDiscount, setLoyaltyDiscount] = useState(null);
+    const validateLoyaltyMutation = useValidateLoyalty();
 
-    useEffect(() => {
-        if (!eventId || !seatIdsParam) {
-            setError("Invalid checkout session. Please return to the seating selection.");
-            setLoading(false);
-            return;
-        }
-        const seatIds = seatIdsParam.split(",").map((s) => s.trim()).filter(Boolean);
-        if (seatIds.length === 0) {
-            setError("No seats selected. Please return to the seating selection.");
-            setLoading(false);
-            return;
-        }
+    const event = eventDetails?.event;
+    const venue = eventDetails?.venue;
 
-        const base = process.env.NEXT_PUBLIC_BACKEND_URI;
-        const fetchData = async () => {
-            try {
-                const eventRes = await fetch(`${base}/events/${eventId}`);
-                if (!eventRes.ok) throw new Error("Event not found");
-                const eventData = await eventRes.json();
-                setEvent(eventData);
-
-                const venueId = getSafeId(eventData.venueId) || getSafeId(eventData.venue);
-                if (venueId) {
-                    const venueRes = await fetch(`${base}/venue/${venueId}`);
-                    if (venueRes.ok) {
-                        const v = await venueRes.json();
-                        setVenue(v);
-                    }
-                }
-
-                const seatsRes = await fetch(`${base}/seats/event/${eventId}`);
-                if (!seatsRes.ok) throw new Error("Failed to fetch seats");
-                const seatsPayload = await seatsRes.json();
-                const allSeats = seatsPayload.seats || [];
-                const idSet = new Set(seatIds);
-                const held = allSeats.filter((s) => idSet.has(getSafeId(s._id)));
-                setHeldSeats(held);
-            } catch (err) {
-                console.error("Checkout fetch error:", err);
-                setError(err.message);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchData();
-    }, [eventId, seatIdsParam]);
+    const heldSeats = useMemo(() => {
+        if (!allSeats.length || !seatIds.length) return [];
+        const idSet = new Set(seatIds);
+        return allSeats.filter((s) => idSet.has(getSafeId(s._id)));
+    }, [allSeats, seatIds]);
 
     const calculateSubtotal = () => {
         if (!heldSeats.length) return 0;
         return heldSeats.reduce((acc, seat) => acc + (Number(seat.price) || 0), 0);
     };
 
-    const calculateTax = (subtotal) => subtotal * 0.15;
+    const calculateTax = (subtotal, discount = 0) => (subtotal - discount) * 0.15;
+
+    const handleApplyLoyalty = async () => {
+        if (!loyaltyCode.trim()) return;
+        setLoyaltyError("");
+        try {
+            const result = await validateLoyaltyMutation.mutateAsync({
+                code: loyaltyCode,
+                eventId: eventId
+            });
+            setLoyaltyDiscount(result.discount);
+            setAppliedLoyaltyCode(loyaltyCode);
+        } catch (err) {
+            setLoyaltyError(err.message || "Invalid Loyalty ID");
+            setLoyaltyDiscount(null);
+            setAppliedLoyaltyCode("");
+        }
+    };
+
+    const handleRemoveLoyalty = () => {
+        setAppliedLoyaltyCode("");
+        setLoyaltyDiscount(null);
+        setLoyaltyCode("");
+        setLoyaltyError("");
+    };
+
+    const calculateDiscount = (subtotal) => {
+        if (!loyaltyDiscount) return 0;
+        if (loyaltyDiscount.type === "PERCENTAGE") {
+            return (subtotal * loyaltyDiscount.value) / 100;
+        }
+        return loyaltyDiscount.value;
+    };
 
     const handleConfirmPurchase = async () => {
         const userId = getSafeId(user);
@@ -110,38 +103,27 @@ function CheckoutContent() {
             alert("User not authenticated");
             return;
         }
-        setProcessing(true);
-        const base = process.env.NEXT_PUBLIC_BACKEND_URI;
-        const seatIds = heldSeats.map((s) => getSafeId(s._id)).filter(Boolean);
-        console.log("Confirming purchase for seats:", seatIds);
+
+        const seatIdsToConfirm = heldSeats.map((s) => getSafeId(s._id)).filter(Boolean);
+
         try {
-            const response = await fetch(`${base}/seats/confirm`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    seatIds,
-                    userId: userId,
-                })
+            await confirmPurchaseMutation.mutateAsync({
+                seatIds: seatIdsToConfirm,
+                userId: userId,
+                loyaltyCode: appliedLoyaltyCode || undefined,
             });
-
-            if (!response.ok) {
-                const data = await response.json();
-                throw new Error(data.message || "Failed to confirm purchase");
-            }
-
             setSuccess(true);
             sessionStorage.removeItem("selectedSeats");
         } catch (err) {
-            alert(err.message);
-        } finally {
-            setProcessing(false);
+            alert(err.message || "Failed to confirm purchase");
         }
     };
 
-    if (loading) return (
+    const isLoading = eventLoading || seatsLoading;
+    const error = eventError?.message || seatsError?.message || (!eventId || !seatIdsParam ? "Invalid checkout session. Please return to the seating selection." : null);
+    const processing = confirmPurchaseMutation.isPending;
+
+    if (isLoading) return (
         <div className="min-h-screen bg-background">
             <Navbar />
             <div className="flex flex-col items-center justify-center h-[70vh]">
@@ -179,7 +161,7 @@ function CheckoutContent() {
                         </div>
                         <h1 className="text-4xl font-bold text-foreground mb-4">Booking Confirmed!</h1>
                         <p className="text-lg text-muted-foreground mb-12">
-                            Your tickets for <span className="font-bold text-primary">{event.name}</span> have been sent to your email.
+                            Your tickets for <span className="font-bold text-primary">{event.name}</span> have been successfully booked.
                         </p>
 
                         <div className="bg-card rounded-xl border border-border p-8 mb-12">
@@ -203,7 +185,7 @@ function CheckoutContent() {
                             </div>
                             <div className="mt-8 pt-8 border-t border-border flex justify-between items-center text-xl">
                                 <span className="font-bold text-foreground">Total Paid</span>
-                                <span className="font-black text-primary">{event.currency || "R"} {(calculateSubtotal() + calculateTax(calculateSubtotal())).toFixed(2)}</span>
+                                <span className="font-black text-primary">{event.currency || "R"} {(calculateSubtotal() - calculateDiscount(calculateSubtotal()) + calculateTax(calculateSubtotal(), calculateDiscount(calculateSubtotal()))).toFixed(2)}</span>
                             </div>
                         </div>
 
@@ -228,8 +210,9 @@ function CheckoutContent() {
     }
 
     const subtotal = calculateSubtotal();
-    const tax = calculateTax(subtotal);
-    const total = subtotal + tax;
+    const discountAmount = calculateDiscount(subtotal);
+    const tax = calculateTax(subtotal, discountAmount);
+    const total = subtotal - discountAmount + tax;
 
     return (
         <RoleGuard allowedRoles={["CUSTOMER"]}>
@@ -248,8 +231,8 @@ function CheckoutContent() {
 
                                 {/* Event Mini Card */}
                                 <div className="flex gap-6 p-4 bg-background-elevated rounded-xl border border-border mb-8">
-                                    {(event.landscapeImage || event.portraitImage) && (
-                                        <img src={event.landscapeImage || event.portraitImage} alt={event.name} className="w-24 h-32 object-cover rounded shadow-md" />
+                                    {(event.images.landscapeImage || event.images.portraitImage) && (
+                                        <img src={event.images.landscapeImage || event.images.portraitImage} alt={event.name} className="w-24 h-32 object-cover rounded shadow-md" />
                                     )}
                                     <div className="flex flex-col justify-center">
                                         <h3 className="text-xl font-bold text-foreground mb-2">{event.name}</h3>
@@ -335,6 +318,68 @@ function CheckoutContent() {
                                         <span>Booking Fee (15%)</span>
                                         <span className="text-foreground">{event.currency || "R"} {tax.toFixed(2)}</span>
                                     </div>
+
+                                    {discountAmount > 0 && (
+                                        <div className="flex justify-between text-accent font-bold">
+                                            <span>Loyalty Discount</span>
+                                            <span>-{event.currency || "R"} {discountAmount.toFixed(2)}</span>
+                                        </div>
+                                    )}
+
+                                    <div className="h-px bg-border my-6"></div>
+
+                                    {/* Loyalty ID Input */}
+                                    <div className="mb-6">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <label className="text-sm font-bold text-foreground">Loyalty ID (Optional)</label>
+                                            {appliedLoyaltyCode && (
+                                                <button
+                                                    onClick={handleRemoveLoyalty}
+                                                    className="text-xs text-destructive hover:underline flex items-center"
+                                                >
+                                                    Remove
+                                                </button>
+                                            )}
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                value={loyaltyCode}
+                                                onChange={(e) => {
+                                                    setLoyaltyCode(e.target.value);
+                                                    if (loyaltyError) setLoyaltyError("");
+                                                }}
+                                                placeholder="Enter Member ID"
+                                                className={`flex-grow bg-background border ${loyaltyError ? 'border-destructive' : 'border-border'} rounded px-3 py-2 text-sm focus:border-primary outline-none transition-colors`}
+                                                disabled={validateLoyaltyMutation.isPending || !!appliedLoyaltyCode}
+                                            />
+                                            {!appliedLoyaltyCode ? (
+                                                <button
+                                                    onClick={handleApplyLoyalty}
+                                                    disabled={validateLoyaltyMutation.isPending || !loyaltyCode}
+                                                    className="bg-primary text-primary-foreground px-4 py-2 rounded text-sm font-bold hover:bg-primary-dark disabled:opacity-50 transition-colors"
+                                                >
+                                                    {validateLoyaltyMutation.isPending ? "..." : "Apply"}
+                                                </button>
+                                            ) : (
+                                                <div className="bg-accent/20 text-accent px-4 py-2 rounded text-sm font-bold flex items-center border border-accent/30">
+                                                    Applied
+                                                </div>
+                                            )}
+                                        </div>
+                                        {loyaltyError && (
+                                            <div className="bg-destructive/10 border border-destructive/20 rounded p-2 mt-2 flex items-start">
+                                                <AlertCircle className="w-4 h-4 text-destructive mr-2 mt-0.5 shrink-0" />
+                                                <p className="text-xs font-medium text-destructive">{loyaltyError}</p>
+                                            </div>
+                                        )}
+                                        {appliedLoyaltyCode && (
+                                            <p className="text-xs text-accent mt-2 flex items-center italic">
+                                                <CheckCircle2 className="w-3 h-3 mr-1" /> Code {appliedLoyaltyCode} applied ({loyaltyDiscount?.pointsRequired} pts)
+                                            </p>
+                                        )}
+                                    </div>
+
                                     <div className="h-px bg-border my-6"></div>
                                     <div className="flex justify-between items-end">
                                         <div>

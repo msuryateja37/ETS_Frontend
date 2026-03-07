@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Mail, Phone, MapPin, Clock, MessageCircle, ArrowLeft, Send, HelpCircle, ChevronDown, ChevronUp, Crown } from "lucide-react";
 import Navbar from "@/app/components/Navbar";
-import RoleGuard from "@/app/components/RoleGuard";
+// import RoleGuard from "@/app/components/RoleGuard";
 import { useRouter } from "next/navigation";
 import Footer from "@/app/components/Footer";
 
@@ -48,9 +48,10 @@ export default function ContactUsPage() {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
+    const normalizedValue = name === "email" ? value.toLowerCase() : value;
     setFormData(prev => ({
       ...prev,
-      [name]: value
+      [name]: normalizedValue
     }));
   };
 
@@ -71,7 +72,7 @@ export default function ContactUsPage() {
   };
 
   return (
-    <RoleGuard allowedRoles={["CUSTOMER"]}>
+    <div>
       <div className="min-h-screen bg-background pb-20">
         <Navbar />
 
@@ -104,7 +105,7 @@ export default function ContactUsPage() {
           </div>
 
           {/* Contact Content - Single Column Layout */}
-          <div className="max-w-4xl mx-auto space-y-8">
+          <div className="max-w-7xl mx-auto space-y-8">
             {/* Interactive FAQ Section */}
             <div className="bg-gradient-to-br from-card to-background rounded-2xl p-8 shadow-xl border-2 border-primary/20">
               <h3 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary to-primary-light mb-6 flex items-center gap-3 uppercase tracking-wide">
@@ -266,7 +267,7 @@ export default function ContactUsPage() {
           </div>
         </div>
       </div>
-      <Footer/>
-    </RoleGuard>
+      <Footer />
+      </div>
   );
 }

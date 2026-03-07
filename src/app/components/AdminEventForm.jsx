@@ -2,10 +2,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Calendar, MapPin, DollarSign, Users, Image, Info, Phone, Mail, Clock, Save, Plus, X, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Calendar, MapPin, DollarSign, Users, Image, Info, Phone, Mail, Clock, Save, Plus, X, CheckCircle2, AlertCircle, Shield } from 'lucide-react';
 import RoleGuard from "../components/RoleGuard";
 
-export default function AdminEventForm({ initialData = null, onSubmit }) {
+// Removed MOCK_GATE_STAFF
+
+import { useVenues, useGateStaff } from '../../hooks/useAdmin';
+
+export default function AdminEventForm({ initialData = null, onSubmit, isSubmitting = false }) {
     const { token } = useAuth();
     const [formData, setFormData] = useState({
         name: '',
@@ -30,45 +34,56 @@ export default function AdminEventForm({ initialData = null, onSubmit }) {
         }
     });
 
-    const [venues, setVenues] = useState([]);
+    const { data: venues = [] } = useVenues();
+    const { data: gateStaffList = [] } = useGateStaff();
     const [selectedVenue, setSelectedVenue] = useState(null);
     const [loading, setLoading] = useState(false);
 
-    useEffect(() => {
-        const fetchVenues = async () => {
-            try {
-                const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/venue`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                const data = await response.json();
-                setVenues(data.venues || []);
-            } catch (error) {
-                console.error('Error fetching venues:', error);
-            }
-        };
-        fetchVenues();
-    }, []);
+    // Gate Staff State
+    const [selectedStaffIds, setSelectedStaffIds] = useState([]); // IDs of staff selected in dropdown
+    const [isStaffDropdownOpen, setIsStaffDropdownOpen] = useState(false);
+    const [assignedStaff, setAssignedStaff] = useState([]); // Array of staff objects with gateName
+
+    // Local file state for optional image uploads
+    const [portraitImageFile, setPortraitImageFile] = useState(null);
+    const [landscapeImageFile, setLandscapeImageFile] = useState(null);
 
     useEffect(() => {
         if (initialData) {
             setFormData({
-                ...initialData,
+                name: initialData.name || '',
+                description: initialData.description || '',
+                venueId: initialData.venueId?._id || initialData.venueId || '',
                 startDateTime: initialData.startDateTime ? new Date(initialData.startDateTime).toISOString().slice(0, 16) : '',
                 endDateTime: initialData.endDateTime ? new Date(initialData.endDateTime).toISOString().slice(0, 16) : '',
-                venueId: initialData.venueId?._id || initialData.venueId || '',
-                eventContactDetails: initialData.eventContactDetails || {
-                    coordinatorName: '',
-                    coordinatorPhone: '',
-                    coordinatorEmail: '',
-                    timings: ''
+                status: initialData.status || 'DRAFT',
+                category: initialData.category || 'MUSIC',
+                seatingType: initialData.seatingType || 'RESERVED',
+                currency: initialData.currency || 'R',
+                zones: initialData.zones || [],
+                likes: initialData.likes || 0,
+                ageLimit: initialData.ageLimit || '',
+                // Existing events store URLs under images subdocument
+                portraitImage: initialData.images?.portraitImage || initialData.portraitImage || '',
+                landscapeImage: initialData.images?.landscapeImage || initialData.landscapeImage || '',
+                eventContactDetails: {
+                    coordinatorName: initialData.eventContactDetails?.coordinatorName || '',
+                    coordinatorPhone: initialData.eventContactDetails?.coordinatorPhone || '',
+                    coordinatorEmail: initialData.eventContactDetails?.coordinatorEmail || '',
+                    timings: initialData.eventContactDetails?.timings || ''
                 }
             });
+            // Initialize assigned staff if available in initialData
+            setAssignedStaff(initialData.gateStaff || []);
             const venueId = initialData.venueId?._id || initialData.venueId;
             if (venueId && venues.length > 0) {
                 const venue = venues.find(v => v._id === venueId);
                 setSelectedVenue(venue);
             }
         }
+        // Reset local file selections when initial data changes
+        setPortraitImageFile(null);
+        setLandscapeImageFile(null);
     }, [initialData, venues]);
 
     useEffect(() => {
@@ -208,22 +223,103 @@ export default function AdminEventForm({ initialData = null, onSubmit }) {
         return true;
     };
 
+    const getUserId = (userOrId) => {
+        if (!userOrId) return null;
+        return typeof userOrId === 'object' ? userOrId._id : userOrId;
+    };
+
+    const handleAddStaff = () => {
+        if (selectedStaffIds.length === 0) return;
+
+        // Find the staff objects from the IDs
+        const newStaff = gateStaffList.filter(s => selectedStaffIds.includes(s._id));
+
+        // Filter out any that might have been added concurrently
+        const uniqueNewStaff = newStaff.filter(s => {
+            const sUserId = getUserId(s.userId);
+            return !assignedStaff.some(assigned => getUserId(assigned.userId) === sUserId);
+        });
+
+        if (uniqueNewStaff.length > 0) {
+            // Add new staff with empty gateName
+            const newAssignments = uniqueNewStaff.map(s => ({
+                ...s,
+                gateName: ''
+            }));
+
+            setAssignedStaff([...assignedStaff, ...newAssignments]);
+            setSelectedStaffIds([]);
+            setIsStaffDropdownOpen(false);
+        }
+    };
+
+    const toggleStaffSelection = (staff) => {
+        const staffId = staff._id;
+        setSelectedStaffIds(prev =>
+            prev.includes(staffId)
+                ? prev.filter(id => id !== staffId)
+                : [...prev, staffId]
+        );
+    };
+
+    const handleRemoveStaff = (staffId) => {
+        setAssignedStaff(assignedStaff.filter(s => s._id !== staffId));
+    };
+
+    const handleGateNameChange = (index, value) => {
+        const newAssignedStaff = [...assignedStaff];
+        newAssignedStaff[index] = { ...newAssignedStaff[index], gateName: value };
+        setAssignedStaff(newAssignedStaff);
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
+
+        // Basic date/time validation
+        if (!formData.startDateTime || !formData.endDateTime) {
+            alert('Please select both start and end date & time.');
+            return;
+        }
+
+        const start = new Date(formData.startDateTime);
+        const end = new Date(formData.endDateTime);
+
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+            alert('Please provide valid start and end date & time values.');
+            return;
+        }
+
+        if (end <= start) {
+            alert('End date & time must be after the start date & time.');
+            return;
+        }
 
         // Validate zones and sections before submitting
         if (!validateZonesAndSections()) {
             return;
         }
 
+        // Validate gate staff assignments
+        const invalidStaff = assignedStaff.filter(s => !s.gateName || s.gateName.trim() === '');
+        if (invalidStaff.length > 0) {
+            alert('Please enter a Gate Name for all assigned staff members');
+            return;
+        }
+
         setLoading(true);
-        await onSubmit(formData);
+        // Include assignedStaff and selected image files in the submitted data
+        await onSubmit({
+            ...formData,
+            gateStaff: assignedStaff,
+            portraitImageFile,
+            landscapeImageFile,
+        });
         setLoading(false);
     };
 
     return (
         <RoleGuard allowedRoles={["ADMIN"]}>
-            <form onSubmit={handleSubmit} className="space-y-8">
+            <form onSubmit={handleSubmit} className="space-y-8 max-w-7xl mx-auto">
                 {/* Event Details Card */}
                 <div className="bg-card rounded-2xl border border-border overflow-hidden">
                     <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-8 py-6 border-b border-border">
@@ -309,14 +405,34 @@ export default function AdminEventForm({ initialData = null, onSubmit }) {
                                     <Calendar className="w-4 h-4 inline mr-2" />
                                     Start Date & Time *
                                 </label>
-                                <input
-                                    type="datetime-local"
-                                    name="startDateTime"
-                                    value={formData.startDateTime}
-                                    onChange={handleChange}
-                                    required
-                                    className="w-full px-4 py-3 rounded-xl border-2 border-border bg-background-elevated focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all outline-none"
-                                />
+                                <div className="flex gap-2">
+                                    <input
+                                        type="date"
+                                        name="startDateTime"
+                                        value={formData.startDateTime ? formData.startDateTime.slice(0, 10) : ''}
+                                        onChange={(e) => {
+                                            const time = formData.startDateTime ? formData.startDateTime.slice(11, 16) : '00:00';
+                                            handleChange({ target: { name: 'startDateTime', value: e.target.value ? `${e.target.value}T${time}` : '' } });
+                                        }}
+                                        required
+                                        min={new Date().toISOString().slice(0, 10)}
+                                        className="flex-1 px-4 py-3 rounded-xl border-2 border-border bg-background-elevated focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all outline-none text-foreground [color-scheme:dark]"
+                                    />
+                                    <input
+                                        type="time"
+                                        value={formData.startDateTime ? formData.startDateTime.slice(11, 16) : ''}
+                                        onChange={(e) => {
+                                            const date = formData.startDateTime ? formData.startDateTime.slice(0, 10) : new Date().toISOString().slice(0, 10);
+                                            handleChange({ target: { name: 'startDateTime', value: e.target.value ? `${date}T${e.target.value}` : '' } });
+                                        }}
+                                        min={
+                                            formData.startDateTime && formData.startDateTime.slice(0, 10) === new Date().toISOString().slice(0, 10)
+                                                ? new Date().toTimeString().slice(0, 5)
+                                                : undefined
+                                        }
+                                        className="w-36 px-4 py-3 rounded-xl border-2 border-border bg-background-elevated focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all outline-none text-foreground [color-scheme:dark]"
+                                    />
+                                </div>
                             </div>
 
                             <div>
@@ -324,14 +440,39 @@ export default function AdminEventForm({ initialData = null, onSubmit }) {
                                     <Calendar className="w-4 h-4 inline mr-2" />
                                     End Date & Time *
                                 </label>
-                                <input
-                                    type="datetime-local"
-                                    name="endDateTime"
-                                    value={formData.endDateTime}
-                                    onChange={handleChange}
-                                    required
-                                    className="w-full px-4 py-3 rounded-xl border-2 border-border bg-background-elevated focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all outline-none text-foreground"
-                                />
+                                <div className="flex gap-2">
+                                    <input
+                                        type="date"
+                                        name="endDateTime"
+                                        value={formData.endDateTime ? formData.endDateTime.slice(0, 10) : ''}
+                                        onChange={(e) => {
+                                            const time = formData.endDateTime ? formData.endDateTime.slice(11, 16) : '00:00';
+                                            handleChange({ target: { name: 'endDateTime', value: e.target.value ? `${e.target.value}T${time}` : '' } });
+                                        }}
+                                        required
+                                        min={
+                                            formData.startDateTime
+                                                ? formData.startDateTime.slice(0, 10)
+                                                : new Date().toISOString().slice(0, 10)
+                                        }
+                                        className="flex-1 px-4 py-3 rounded-xl border-2 border-border bg-background-elevated focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all outline-none text-foreground [color-scheme:dark]"
+                                    />
+                                    <input
+                                        type="time"
+                                        value={formData.endDateTime ? formData.endDateTime.slice(11, 16) : ''}
+                                        onChange={(e) => {
+                                            const date = formData.endDateTime ? formData.endDateTime.slice(0, 10) : new Date().toISOString().slice(0, 10);
+                                            handleChange({ target: { name: 'endDateTime', value: e.target.value ? `${date}T${e.target.value}` : '' } });
+                                        }}
+                                        min={
+                                            formData.endDateTime && formData.startDateTime &&
+                                            formData.endDateTime.slice(0, 10) === formData.startDateTime.slice(0, 10)
+                                                ? formData.startDateTime.slice(11, 16)
+                                                : undefined
+                                        }
+                                        className="w-36 px-4 py-3 rounded-xl border-2 border-border bg-background-elevated focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all outline-none text-foreground [color-scheme:dark]"
+                                    />
+                                </div>
                             </div>
 
                             <div>
@@ -416,29 +557,61 @@ export default function AdminEventForm({ initialData = null, onSubmit }) {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
                                 <label className="block text-sm font-semibold text-foreground mb-3">
-                                    Portrait Image URL
+                                    Portrait Image
                                 </label>
-                                <input
-                                    type="url"
-                                    name="portraitImage"
-                                    value={formData.portraitImage}
-                                    onChange={handleChange}
-                                    placeholder="https://example.com/portrait.jpg"
-                                    className="w-full px-4 py-3 rounded-xl border-2 border-border bg-background-elevated focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all outline-none text-foreground placeholder:text-muted-foreground"
-                                />
+                                <div className="space-y-3">
+                                    <input
+                                        type="url"
+                                        name="portraitImage"
+                                        value={formData.portraitImage}
+                                        onChange={handleChange}
+                                        placeholder="https://example.com/portrait.jpg"
+                                        className="w-full px-4 py-3 rounded-xl border-2 border-border bg-background-elevated focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all outline-none text-foreground placeholder:text-muted-foreground"
+                                    />
+                                    <div className="text-xs text-muted-foreground">
+                                        You can either paste an existing image URL above or upload a new image file below.
+                                    </div>
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={(e) => setPortraitImageFile(e.target.files?.[0] || null)}
+                                        className="block w-full text-sm text-foreground file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
+                                    />
+                                    {portraitImageFile && (
+                                        <p className="text-xs text-foreground">
+                                            Selected file: <span className="font-medium">{portraitImageFile.name}</span>
+                                        </p>
+                                    )}
+                                </div>
                             </div>
                             <div>
                                 <label className="block text-sm font-semibold text-foreground mb-3">
-                                    Landscape Image URL
+                                    Landscape Image
                                 </label>
-                                <input
-                                    type="url"
-                                    name="landscapeImage"
-                                    value={formData.landscapeImage}
-                                    onChange={handleChange}
-                                    placeholder="https://example.com/landscape.jpg"
-                                    className="w-full px-4 py-3 rounded-xl border-2 border-border bg-background-elevated focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all outline-none text-foreground placeholder:text-muted-foreground"
-                                />
+                                <div className="space-y-3">
+                                    <input
+                                        type="url"
+                                        name="landscapeImage"
+                                        value={formData.landscapeImage}
+                                        onChange={handleChange}
+                                        placeholder="https://example.com/landscape.jpg"
+                                        className="w-full px-4 py-3 rounded-xl border-2 border-border bg-background-elevated focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all outline-none text-foreground placeholder:text-muted-foreground"
+                                    />
+                                    <div className="text-xs text-muted-foreground">
+                                        You can either paste an existing image URL above or upload a new image file below.
+                                    </div>
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={(e) => setLandscapeImageFile(e.target.files?.[0] || null)}
+                                        className="block w-full text-sm text-foreground file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
+                                    />
+                                    {landscapeImageFile && (
+                                        <p className="text-xs text-foreground">
+                                            Selected file: <span className="font-medium">{landscapeImageFile.name}</span>
+                                        </p>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -512,6 +685,150 @@ export default function AdminEventForm({ initialData = null, onSubmit }) {
                                 />
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                {/* Gate Staff Management Card */}
+                <div className="bg-card rounded-2xl border border-border overflow-hidden">
+                    <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-8 py-6 border-b border-border">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-primary/10 rounded-lg">
+                                <Shield className="w-5 h-5 text-primary" />
+                            </div>
+                            <h2 className="text-2xl font-bold text-foreground">Gate Staff Management</h2>
+                        </div>
+                    </div>
+                    <div className="p-8">
+                        <div className="mb-6">
+                            <label className="block text-sm font-semibold text-foreground mb-3">
+                                Add Staff Members
+                            </label>
+                            <div className="flex gap-4 items-start">
+                                <div className="relative flex-grow">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsStaffDropdownOpen(!isStaffDropdownOpen)}
+                                        className="w-full px-4 py-3 rounded-xl border-2 border-border bg-background-elevated focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all outline-none text-foreground text-left flex justify-between items-center"
+                                    >
+                                        <span className={selectedStaffIds.length === 0 ? "text-muted-foreground" : ""}>
+                                            {selectedStaffIds.length === 0
+                                                ? "Select staff members..."
+                                                : `${selectedStaffIds.length} members selected`}
+                                        </span>
+                                        <div className={`transition-transform duration-200 ${isStaffDropdownOpen ? "rotate-180" : ""}`}>
+                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 opacity-50"><path d="m6 9 6 6 6-6" /></svg>
+                                        </div>
+                                    </button>
+
+                                    {isStaffDropdownOpen && (
+                                        <div className="absolute z-10 w-full mt-2 bg-card border border-border rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                            <div className="max-h-60 overflow-y-auto">
+                                                {gateStaffList.filter(s => {
+                                                    const sUserId = getUserId(s.userId);
+                                                    return !assignedStaff.some(assigned => getUserId(assigned.userId) === sUserId);
+                                                }).length === 0 ? (
+                                                    <div className="p-4 text-center text-sm text-muted-foreground">
+                                                        No more staff available
+                                                    </div>
+                                                ) : (
+                                                    <div className="p-2 space-y-1">
+                                                        {gateStaffList.filter(s => {
+                                                            const sUserId = getUserId(s.userId);
+                                                            return !assignedStaff.some(assigned => getUserId(assigned.userId) === sUserId);
+                                                        }).map(staff => (
+                                                            <div
+                                                                key={staff._id}
+                                                                onClick={() => toggleStaffSelection(staff)}
+                                                                className="flex items-center gap-3 p-3 rounded-lg hover:bg-primary/5 cursor-pointer transition-colors"
+                                                            >
+                                                                <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${selectedStaffIds.includes(staff._id)
+                                                                    ? "bg-primary border-primary text-primary-foreground"
+                                                                    : "border-muted-foreground/30 bg-background"
+                                                                    }`}>
+                                                                    {selectedStaffIds.includes(staff._id) && <CheckCircle2 className="w-3.5 h-3.5" />}
+                                                                </div>
+                                                                <div>
+                                                                    <div className="font-medium text-sm">{staff.userId?.name || 'Unknown Name'}</div>
+                                                                    <div className="text-xs text-muted-foreground">{staff.userId?.email || 'No Email'} . {staff.userId?.phone || 'No Phone'}</div>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleAddStaff}
+                                    disabled={selectedStaffIds.length === 0}
+                                    className="px-6 py-3 bg-secondary hover:bg-secondary/80 text-secondary-foreground rounded-xl font-semibold transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                >
+                                    <Plus className="w-4 h-4" />
+                                    Add Selected
+                                </button>
+                            </div>
+                        </div>
+
+                        {assignedStaff.length > 0 ? (
+                            <div className="border border-border rounded-xl overflow-hidden">
+                                <table className="w-full text-left">
+                                    <thead className="bg-background-elevated border-b border-border">
+                                        <tr>
+                                            <th className="px-6 py-4 text-sm font-semibold text-foreground">Name</th>
+                                            <th className="px-6 py-4 text-sm font-semibold text-foreground">Contact</th>
+                                            <th className="px-6 py-4 text-sm font-semibold text-foreground">Gate Name *</th>
+                                            <th className="px-6 py-4 text-sm font-semibold text-foreground text-right">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border">
+                                        {assignedStaff.map((staff, index) => (
+                                            <tr key={staff._id || index} className="hover:bg-background-elevated/50 transition-colors">
+                                                <td className="px-6 py-4">
+                                                    <div className="font-medium text-foreground">{staff.userId?.name}</div>
+                                                    <div className="text-xs text-muted-foreground">{staff.userId?.email}</div>
+                                                </td>
+                                                <td className="px-6 py-4 text-sm text-foreground">
+                                                    <div className="flex items-center gap-2">
+                                                        <Phone className="w-3 h-3 text-muted-foreground" />
+                                                        {staff.userId?.phone || 'N/A'}
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <input
+                                                        type="text"
+                                                        value={staff.gateName || ''}
+                                                        onChange={(e) => handleGateNameChange(index, e.target.value)}
+                                                        placeholder="Enter Gate Name"
+                                                        className="w-full px-3 py-2 rounded-lg border border-border bg-background focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all outline-none text-sm"
+                                                        required
+                                                    />
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleRemoveStaff(staff._id)}
+                                                        className="p-2 text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+                                                        title="Remove staff"
+                                                    >
+                                                        <X className="w-4 h-4" />
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <div className="text-center py-12 border-2 border-dashed border-border rounded-xl">
+                                <div className="mb-4 inline-flex items-center justify-center w-12 h-12 rounded-full bg-muted">
+                                    <Users className="w-6 h-6 text-muted-foreground" />
+                                </div>
+                                <p className="text-sm font-medium text-foreground">No gate staff assigned</p>
+                                <p className="text-xs text-muted-foreground mt-1">Select a staff member above to add them to this event</p>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -682,7 +999,7 @@ export default function AdminEventForm({ initialData = null, onSubmit }) {
                 <div className="flex justify-end gap-4">
                     <button
                         type="submit"
-                        disabled={loading}
+                        disabled={loading || isSubmitting}
                         className="group flex items-center gap-3 px-10 py-5 bg-primary hover:bg-primary-dark text-primary-foreground rounded-xl font-bold text-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
                     >
                         {loading ? (

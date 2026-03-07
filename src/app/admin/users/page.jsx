@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
-import { ArrowLeft, Search, Filter, Users as UsersIcon, Shield, ChevronLeft, ChevronRight, Activity, UserPlus, X, Crown, Sparkles } from "lucide-react";
+import { useUsers, useUpdateUserRole, useUpdateUserPermissions, useDeleteUser } from "../../../hooks/useAdmin";
+import { ArrowLeft, Search, Filter, Users as UsersIcon, Shield, ChevronLeft, ChevronRight, Activity, UserPlus, X, Crown, Sparkles, ChevronDown } from "lucide-react";
 import UserTable from "../../components/UserTable";
 import RoleGuard from "../../components/RoleGuard";
 import Navbar from "../../components/Navbar";
@@ -12,19 +13,21 @@ import Footer from "@/app/components/Footer";
 export default function UserManagementPage() {
   const router = useRouter();
   const { user: authUser, token } = useAuth();
-  const [users, setUsers] = useState([]);
-  const [filteredUsers, setFilteredUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+
+  const { data: usersData = [], isLoading, isError, error: fetchError } = useUsers();
+  const updateUserRoleMutation = useUpdateUserRole();
+  const updateUserPermissionsMutation = useUpdateUserPermissions();
+  const deleteUserMutation = useDeleteUser();
+
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("ALL");
-  const [currentUser, setCurrentUser] = useState(null);
+  const [sortBy, setSortBy] = useState("date-desc");
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const usersPerPage = 10;
 
-  //key value pair role:label
+  // Key value pair role:label
   const roles = [
     { role: "ALL", label: "All Roles" },
     { role: "CUSTOMER", label: "Customer" },
@@ -34,168 +37,79 @@ export default function UserManagementPage() {
     { role: "MANAGEMENT", label: "Management" }
   ];
 
+  // Reset to first page when filters change
   useEffect(() => {
-    // Get current logged-in user
-    const userData = localStorage.getItem("user");
-    if (userData) {
-      setCurrentUser(JSON.parse(userData));
-    }
-    fetchUsers();
-  }, []);
+    setCurrentPage(1);
+  }, [searchQuery, roleFilter, sortBy]);
 
-  useEffect(() => {
-    filterUsers();
-    setCurrentPage(1); // Reset to first page when filters change
-  }, [searchQuery, roleFilter, users]);
+  const filteredUsers = useMemo(() => {
+    // 1. Filter out currently logged-in user
+    const currentUserId = authUser ? authUser._id : null;
+    let filtered = usersData.filter(user => user._id !== currentUserId);
 
-  const fetchUsers = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/user`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch users');
-      }
-
-      const data = await response.json();
-
-      // Filter out the currently logged-in user
-      const currentUserId = authUser ? authUser._id : null;
-
-      const filteredData = data.filter(user => user._id !== currentUserId);
-
-      // Sort by creation date (newest first)
-      const sortedData = filteredData.sort((a, b) => {
-        return new Date(b.createdAt) - new Date(a.createdAt);
-      });
-
-      setUsers(sortedData);
-
-    } catch (err) {
-      console.error('Error fetching users:', err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const filterUsers = () => {
-    let filtered = [...users];
-
-    // Apply role filter
+    // 2. Apply role filter
     if (roleFilter !== "ALL") {
       filtered = filtered.filter(user => user.role === roleFilter);
     }
 
-    // Apply search filter
+    // 3. Apply search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(user =>
-        user.name?.toLowerCase().includes(query) ||
-        user.email?.toLowerCase().includes(query) ||
-        user._id?.toLowerCase().includes(query)
-      );
+      const monthNames = ["january", "february", "march", "april", "may", "june",
+        "july", "august", "september", "october", "november", "december"];
+      const shortMonths = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+
+      filtered = filtered.filter(user => {
+        const createDate = new Date(user.createdAt);
+        const createMonth = monthNames[createDate.getMonth()];
+        const createShortMonth = shortMonths[createDate.getMonth()];
+        const createDay = createDate.getDate().toString();
+        const createYear = createDate.getFullYear().toString();
+
+        return (
+          user.name?.toLowerCase().includes(query) ||
+          user.email?.toLowerCase().includes(query) ||
+          user._id?.toLowerCase().includes(query) ||
+          createMonth?.includes(query) ||
+          createShortMonth?.includes(query) ||
+          createDay === query ||
+          createYear === query
+        );
+      });
     }
-    setFilteredUsers(filtered);
-  };
+
+    // 4. Apply sorting
+    return filtered.sort((a, b) => {
+      switch (sortBy) {
+        case 'date-desc':
+          return new Date(b.createdAt) - new Date(a.createdAt);
+        case 'date-asc':
+          return new Date(a.createdAt) - new Date(b.createdAt);
+        case 'name-asc':
+          return (a.name || '').localeCompare(b.name || '');
+        case 'name-desc':
+          return (b.name || '').localeCompare(a.name || '');
+        default:
+          return 0;
+      }
+    });
+  }, [usersData, authUser, roleFilter, searchQuery, sortBy]);
 
   const handleRoleUpdate = async (userId, newRole) => {
     try {
-      // First, fetch the current user to get their existing role
-      const userResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/user/${userId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+      // Find the user in the already fetched usersData
+      const userToUpdate = usersData.find(u => u._id === userId);
+
+      if (!userToUpdate) {
+        throw new Error("User not found in local cache");
+      }
+
+      await updateUserRoleMutation.mutateAsync({
+        userId,
+        newRole,
+        oldRole: userToUpdate.role,
+        userToUpdate
       });
-      if (!userResponse.ok) {
-        throw new Error('Failed to fetch user');
-      }
-      const userToUpdate = await userResponse.json();
-      const oldRole = userToUpdate.role;
-
-      // Update the user role
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/user/${userId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ role: newRole }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to update role');
-      }
-
-      // Handle customer record creation/deletion based on role change
-      const isChangingToCustomer = oldRole !== 'CUSTOMER' && newRole === 'CUSTOMER';
-      const isChangingFromCustomer = oldRole === 'CUSTOMER' && newRole !== 'CUSTOMER';
-
-      if (isChangingToCustomer) {
-        // Create customer record
-        const customerData = {
-          encryptedPII: {
-            name: userToUpdate.name,
-            email: userToUpdate.email,
-            phone: userToUpdate.phone || '',
-          },
-          userId: userToUpdate._id,
-          loyalty: {
-            verified: false,
-          },
-        };
-
-        const customerResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/customers`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify(customerData),
-        });
-
-        if (!customerResponse.ok) {
-          console.error('Failed to create customer record');
-        }
-      } else if (isChangingFromCustomer) {
-        // Find and delete customer record by email
-        const customerResponse = await fetch(
-          `${process.env.NEXT_PUBLIC_BACKEND_URI}/customers/email/${userToUpdate.email}`,
-          {
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
-          }
-        );
-
-        if (customerResponse.ok) {
-          const customer = await customerResponse.json();
-          if (customer && customer._id) {
-            const deleteResponse = await fetch(
-              `${process.env.NEXT_PUBLIC_BACKEND_URI}/customers/${customer._id}`,
-              {
-                method: 'DELETE',
-                headers: {
-                  'Authorization': `Bearer ${token}`
-                }
-              }
-            );
-
-            if (!deleteResponse.ok) {
-              console.error('Failed to delete customer record');
-            }
-          }
-        }
-      }
-
-      // Refresh users list
-      await fetchUsers();
 
       return { success: true };
     } catch (error) {
@@ -206,24 +120,20 @@ export default function UserManagementPage() {
 
   const handlePermissionsUpdate = async (userId, newPermissions) => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/user/${userId}/permissions`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ permissions: newPermissions }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to update permissions');
-      }
-
-      // Refresh users list
-      await fetchUsers();
-
+      await updateUserPermissionsMutation.mutateAsync({ userId, newPermissions });
       return { success: true };
     } catch (error) {
       console.error('Error updating permissions:', error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  const handleDeleteUser = async (userId) => {
+    try {
+      await deleteUserMutation.mutateAsync(userId);
+      return { success: true };
+    } catch (error) {
+      console.error('Error deleting user:', error);
       return { success: false, error: error.message };
     }
   };
@@ -236,7 +146,12 @@ export default function UserManagementPage() {
 
   const handlePageChange = (pageNumber) => {
     setCurrentPage(pageNumber);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const tableHeader = document.getElementById('user-table-header');
+    if (tableHeader) {
+      tableHeader.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   const handlePreviousPage = () => {
@@ -274,7 +189,7 @@ export default function UserManagementPage() {
     return pageNumbers;
   };
 
-  if (loading && users.length === 0) {
+  if (isLoading && usersData.length === 0) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
@@ -284,6 +199,8 @@ export default function UserManagementPage() {
       </div>
     );
   }
+
+  const PageError = isError ? (fetchError?.message || "Error loading users") : null;
 
   return (
     <RoleGuard allowedRoles={["ADMIN"]}>
@@ -311,10 +228,10 @@ export default function UserManagementPage() {
               <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
                 <div className="space-y-4">
                   <div>
-                    <h1 className="text-4xl md:text-5xl font-black text-foreground tracking-tight mb-2 flex flex-wrap items-center gap-4">
+                    <h1 id="user-table-header" className="text-4xl md:text-5xl font-black text-foreground tracking-tight mb-2 flex flex-wrap items-center gap-4">
                       User Management
                       <span className="px-4 py-1.5 bg-primary/10 text-primary rounded-full text-base font-bold border border-primary/20">
-                        {users.length} Total
+                        {usersData.length} Total
                       </span>
                     </h1>
                   </div>
@@ -336,12 +253,12 @@ export default function UserManagementPage() {
 
           {/* Elegant Stats Grid */}
           <div className="grid grid-cols-2 lg:grid-cols-6 gap-4 mb-10">
-            <MiniStat label="Customers" count={users.filter(u => u.role === 'CUSTOMER').length} color="primary" />
-            <MiniStat label="Admins" count={users.filter(u => u.role === 'ADMIN').length} color="primary" />
-            <MiniStat label="Ticketing" count={users.filter(u => u.role === 'TICKETING').length} color="accent" />
-            <MiniStat label="Gate Staff" count={users.filter(u => u.role === 'GATE').length} color="accent" />
-            <MiniStat label="Management" count={users.filter(u => u.role === 'MANAGEMENT').length} color="primary" />
-            <MiniStat label="Active" count={users.filter(u => u.isActive).length} color="accent" icon={<Activity className="w-3 h-3" />} />
+            <MiniStat label="Active" count={usersData.filter(u => u.isActive).length} color="accent" icon={<Activity className="w-3 h-3" />} />
+            <MiniStat label="Customers" count={usersData.filter(u => u.role === 'CUSTOMER').length} color="primary" />
+            <MiniStat label="Admins" count={usersData.filter(u => u.role === 'ADMIN').length} color="primary" />
+            <MiniStat label="Ticketing" count={usersData.filter(u => u.role === 'TICKETING').length} color="accent" />
+            <MiniStat label="Gate Staff" count={usersData.filter(u => u.role === 'GATE').length} color="accent" />
+            <MiniStat label="Management" count={usersData.filter(u => u.role === 'MANAGEMENT').length} color="primary" />
           </div>
 
           {/* Filters & Search */}
@@ -349,23 +266,56 @@ export default function UserManagementPage() {
             {/* Subtle gradient overlay */}
             <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent pointer-events-none"></div>
 
-            <div className="relative z-10 flex flex-col lg:flex-row gap-6">
-              {/* Search */}
-              <div className="flex-1 relative group">
-                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5 group-focus-within:text-primary transition-colors" />
-                <input
-                  type="text"
-                  placeholder="Search by name, email, or ID..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-12 pr-12 py-4 bg-background-elevated border-2 border-border rounded-xl focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-medium text-foreground placeholder:text-muted-foreground"
-                />
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery("")}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 p-1.5 hover:bg-primary/10 rounded-lg transition-colors"
+            <div className="relative z-10 space-y-6">
+              <div className="flex flex-col lg:flex-row gap-6">
+                {/* Search */}
+                <div className="flex-1 relative group">
+                  <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5 group-focus-within:text-primary transition-colors" />
+                  <input
+                    type="text"
+                    placeholder="Search by name, email, month, or year..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value.toLowerCase())}
+                    className="w-full pl-12 pr-12 py-4 bg-background-elevated border-2 border-border rounded-xl focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-medium text-foreground placeholder:text-muted-foreground"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 p-1.5 hover:bg-primary/10 rounded-lg transition-colors"
+                    >
+                      <X className="w-4 h-4 text-muted-foreground" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Sort Dropdown */}
+                <div className="relative min-w-[200px]">
+                  <Filter className="absolute left-4 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5" />
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                    className="w-full pl-12 pr-10 py-4 bg-background-elevated border-2 border-border rounded-xl focus:outline-none focus:border-primary transition-all font-bold text-foreground appearance-none cursor-pointer text-sm"
                   >
-                    <X className="w-4 h-4 text-muted-foreground" />
+                    <option value="date-desc">Newest First</option>
+                    <option value="date-asc">Oldest First</option>
+                    <option value="name-asc">Name (A-Z)</option>
+                    <option value="name-desc">Name (Z-A)</option>
+                  </select>
+                  <ChevronDown className="absolute right-4 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5 pointer-events-none" />
+                </div>
+
+                {/* Clear Filters */}
+                {(searchQuery || roleFilter !== "ALL" || sortBy !== "date-desc") && (
+                  <button
+                    onClick={() => {
+                      setSearchQuery("");
+                      setRoleFilter("ALL");
+                      setSortBy("date-desc");
+                    }}
+                    className="px-6 py-4 bg-primary/10 text-primary border-2 border-primary/20 rounded-xl font-bold hover:bg-primary hover:text-white transition-all flex items-center gap-2"
+                  >
+                    <X className="w-4 h-4" />
+                    Clear All
                   </button>
                 )}
               </div>
@@ -389,20 +339,20 @@ export default function UserManagementPage() {
           </div>
 
           {/* Error Display */}
-          {error && (
+          {(PageError || fetchError) && (
             <div className="bg-destructive/10 border-2 border-destructive/20 text-destructive px-6 py-4 rounded-2xl mb-8 flex items-center gap-3">
               <div className="w-2 h-2 bg-destructive rounded-full animate-pulse"></div>
-              <p className="font-bold text-sm">{error}</p>
+              <p className="font-bold text-sm">{PageError || fetchError.message}</p>
             </div>
           )}
 
-          {/* Users Table Container */}
+
           <div className="bg-card rounded-2xl border border-border overflow-hidden mb-8 shadow-lg">
             <UserTable
               users={currentUsers}
               onRoleUpdate={handleRoleUpdate}
               onPermissionsUpdate={handlePermissionsUpdate}
-              onRefresh={fetchUsers}
+              onDeleteUser={handleDeleteUser}
             />
           </div>
 
