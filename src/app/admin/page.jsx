@@ -2,7 +2,21 @@
 
 import { useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Users, Calendar, Ticket, DollarSign, TrendingUp, Settings, BarChart3, ArrowRight, Activity, ShieldCheck, Crown, Sparkles } from 'lucide-react';
+import {
+  Users,
+  Calendar,
+  Ticket,
+  DollarSign,
+  TrendingUp,
+  Settings,
+  BarChart3,
+  ArrowRight,
+  Activity,
+  ShieldCheck,
+  Crown,
+  Sparkles,
+  MapPin,
+} from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useAdminDashboardData } from "../../hooks/useAdmin";
 import RoleGuard from "../components/RoleGuard";
@@ -12,6 +26,20 @@ import Footer from "../components/Footer";
 export default function AdminHomePage({ logout }) {
   const { user } = useAuth();
   const router = useRouter();
+<<<<<<< Updated upstream
+=======
+  const [stats, setStats] = useState({
+    totalEvents: 0,
+    totalUsers: 0,
+    totalRevenue: 0,
+    activeBookings: 0,
+  });
+  const [recentActivity, setRecentActivity] = useState({
+    users: [],
+    tickets: [],
+  });
+  const [loading, setLoading] = useState(true);
+>>>>>>> Stashed changes
 
   const { events, users, tickets, isLoading, isError } = useAdminDashboardData();
 
@@ -23,6 +51,7 @@ export default function AdminHomePage({ logout }) {
       activeBookings: 0
     };
 
+<<<<<<< Updated upstream
     return {
       totalEvents: events.length,
       totalUsers: users.length,
@@ -30,6 +59,19 @@ export default function AdminHomePage({ logout }) {
       activeBookings: tickets.filter(t => t.status === 'VALID').length
     };
   }, [events, users, tickets]);
+=======
+      const [eventsRes, usersRes, ticketsRes] = await Promise.all([
+        fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/events`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/user`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${process.env.NEXT_PUBLIC_BACKEND_URI}/tickets`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
+>>>>>>> Stashed changes
 
   const recentActivity = useMemo(() => {
     if (!users || !tickets) return { users: [], tickets: [] };
@@ -38,6 +80,7 @@ export default function AdminHomePage({ logout }) {
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
       .slice(0, 2);
 
+<<<<<<< Updated upstream
     const latestTickets = [...tickets]
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
       .slice(0, 2);
@@ -47,9 +90,40 @@ export default function AdminHomePage({ logout }) {
       tickets: latestTickets
     };
   }, [users, tickets]);
+=======
+      setStats({
+        totalEvents: (eventsData || []).length,
+        totalUsers: (usersData || []).length,
+        totalRevenue: (ticketsData || []).reduce(
+          (acc, t) => acc + (t.pricePaid || 0),
+          0,
+        ),
+        activeBookings: (ticketsData || []).filter((t) => t.status === "VALID")
+          .length,
+      });
+
+      const latestUsers = [...(usersData || [])]
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        .slice(0, 2);
+
+      const latestTickets = [...(ticketsData || [])]
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        .slice(0, 2);
+
+      setRecentActivity({
+        users: latestUsers,
+        tickets: latestTickets,
+      });
+    } catch (error) {
+      console.error("Error fetching stats:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+>>>>>>> Stashed changes
 
   const handleClickUserManagement = () => {
-    router.push('/admin/users');
+    router.push("/admin/users");
   };
 
   const formatRelativeTime = (dateString) => {
@@ -69,7 +143,9 @@ export default function AdminHomePage({ logout }) {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-16 w-16 border-4 border-primary/20 border-t-primary mb-6"></div>
-          <p className="text-foreground font-semibold text-lg">Loading Admin Dashboard...</p>
+          <p className="text-foreground font-semibold text-lg">
+            Loading Admin Dashboard...
+          </p>
         </div>
       </div>
     );
@@ -100,7 +176,7 @@ export default function AdminHomePage({ logout }) {
           {/* Luxurious Welcome Header with Gold Accents */}
           <div className="mb-12 relative">
             {/* Decorative top border */}
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-primary to-transparent"></div>
+            <div className="absolute top-0 left-0 right-0 h-1 bg-linear-to-r from-transparent via-primary to-transparent"></div>
 
             <div className="pt-8 pb-6 flex flex-col md:flex-row md:items-end justify-between gap-6">
               <div className="space-y-4">
@@ -186,21 +262,28 @@ export default function AdminHomePage({ logout }) {
                       title="Event Management"
                       description="Create or modify events"
                       icon={Calendar}
-                      onClick={() => router.push('/admin/events')}
+                      onClick={() => router.push("/admin/events")}
                       color="accent"
+                    />
+                    <ActionButton
+                      title="Venue Management"
+                      description="Edit venues & maintenance seats"
+                      icon={MapPin}
+                      onClick={() => router.push("/admin/venues")}
+                      color="primary"
                     />
                     <ActionButton
                       title="Financial Reports"
                       description="View detailed revenue"
                       icon={BarChart3}
-                      onClick={() => router.push('/admin/reports')}
+                      onClick={() => router.push("/admin/reports")}
                       color="primary"
                     />
                     <ActionButton
                       title="System Settings"
                       description="Global configuration"
                       icon={Settings}
-                      onClick={() => router.push('/admin/settings')}
+                      onClick={() => router.push("/admin/settings")}
                       color="muted"
                     />
                   </div>
@@ -220,21 +303,32 @@ export default function AdminHomePage({ logout }) {
                     <div className="p-2 bg-primary/10 rounded-xl">
                       <Activity className="w-5 h-5 text-primary" />
                     </div>
-                    <h2 className="text-xl font-bold text-foreground">Recent Activity</h2>
+                    <h2 className="text-xl font-bold text-foreground">
+                      Recent Activity
+                    </h2>
                   </div>
 
                   <div className="space-y-4">
                     {/* Recent Users */}
                     {recentActivity.users.map((u, idx) => (
-                      <div key={u._id || idx} className="group p-4 rounded-2xl bg-background-elevated border border-border-light hover:border-primary/40 transition-all">
+                      <div
+                        key={u._id || idx}
+                        className="group p-4 rounded-2xl bg-background-elevated border border-border-light hover:border-primary/40 transition-all"
+                      >
                         <div className="flex items-start gap-3">
                           <div className="p-2 bg-primary/10 rounded-lg group-hover:bg-primary/20 transition-colors">
                             <Users className="w-4 h-4 text-primary" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-bold text-foreground truncate">New User</p>
-                            <p className="text-sm text-muted-foreground truncate">{u.name}</p>
-                            <p className="text-xs text-muted-foreground/60 mt-1">{formatRelativeTime(u.createdAt)}</p>
+                            <p className="text-sm font-bold text-foreground truncate">
+                              New User
+                            </p>
+                            <p className="text-sm text-muted-foreground truncate">
+                              {u.name}
+                            </p>
+                            <p className="text-xs text-muted-foreground/60 mt-1">
+                              {formatRelativeTime(u.createdAt)}
+                            </p>
                           </div>
                         </div>
                       </div>
@@ -242,29 +336,41 @@ export default function AdminHomePage({ logout }) {
 
                     {/* Recent Ticket Sales */}
                     {recentActivity.tickets.map((t, idx) => (
-                      <div key={t._id || idx} className="group p-4 rounded-2xl bg-background-elevated border border-border-light hover:border-primary/40 transition-all">
+                      <div
+                        key={t._id || idx}
+                        className="group p-4 rounded-2xl bg-background-elevated border border-border-light hover:border-primary/40 transition-all"
+                      >
                         <div className="flex items-start gap-3">
                           <div className="p-2 bg-accent/10 rounded-lg group-hover:bg-accent/20 transition-colors">
                             <DollarSign className="w-4 h-4 text-accent" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-bold text-foreground">Ticket Sold</p>
-                            <p className="text-sm text-primary font-semibold">R{t.pricePaid}</p>
-                            <p className="text-xs text-muted-foreground/60 mt-1">{formatRelativeTime(t.createdAt)}</p>
+                            <p className="text-sm font-bold text-foreground">
+                              Ticket Sold
+                            </p>
+                            <p className="text-sm text-primary font-semibold">
+                              R{t.pricePaid}
+                            </p>
+                            <p className="text-xs text-muted-foreground/60 mt-1">
+                              {formatRelativeTime(t.createdAt)}
+                            </p>
                           </div>
                         </div>
                       </div>
                     ))}
 
-                    {recentActivity.users.length === 0 && recentActivity.tickets.length === 0 && (
-                      <div className="text-center py-8">
-                        <div className="text-4xl mb-3 opacity-50">📊</div>
-                        <p className="text-sm text-muted-foreground">No recent activity detected</p>
-                      </div>
-                    )}
+                    {recentActivity.users.length === 0 &&
+                      recentActivity.tickets.length === 0 && (
+                        <div className="text-center py-8">
+                          <div className="text-4xl mb-3 opacity-50">📊</div>
+                          <p className="text-sm text-muted-foreground">
+                            No recent activity detected
+                          </p>
+                        </div>
+                      )}
 
                     <button
-                      onClick={() => router.push('/admin/audit-logs')}
+                      onClick={() => router.push("/admin/audit-logs")}
                       className="w-full mt-6 py-4 bg-primary hover:bg-primary-dark text-primary-foreground rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 group"
                     >
                       View Full Audit Log
@@ -285,20 +391,20 @@ export default function AdminHomePage({ logout }) {
 function StatsCard({ title, value, icon: Icon, color, trend, subtitle }) {
   const colorClasses = {
     primary: {
-      bg: 'bg-primary/10',
-      text: 'text-primary',
-      border: 'border-primary/20'
+      bg: "bg-primary/10",
+      text: "text-primary",
+      border: "border-primary/20",
     },
     accent: {
-      bg: 'bg-accent/10',
-      text: 'text-accent',
-      border: 'border-accent/20'
+      bg: "bg-accent/10",
+      text: "text-accent",
+      border: "border-accent/20",
     },
     muted: {
-      bg: 'bg-muted/50',
-      text: 'text-muted-foreground',
-      border: 'border-muted/30'
-    }
+      bg: "bg-muted/50",
+      text: "text-muted-foreground",
+      border: "border-muted/30",
+    },
   };
 
   const colors = colorClasses[color] || colorClasses.primary;
@@ -310,7 +416,9 @@ function StatsCard({ title, value, icon: Icon, color, trend, subtitle }) {
 
       <div className="relative z-10">
         <div className="flex items-start justify-between mb-4">
-          <div className={`p-3 rounded-xl ${colors.bg} ${colors.border} border`}>
+          <div
+            className={`p-3 rounded-xl ${colors.bg} ${colors.border} border`}
+          >
             <Icon className={`w-6 h-6 ${colors.text}`} />
           </div>
           <div className="flex items-center gap-1 px-3 py-1 bg-accent/10 rounded-full">
@@ -319,7 +427,9 @@ function StatsCard({ title, value, icon: Icon, color, trend, subtitle }) {
           </div>
         </div>
         <div>
-          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">{title}</p>
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">
+            {title}
+          </p>
           <p className="text-3xl font-black text-foreground mb-1">{value}</p>
           <p className="text-xs text-muted-foreground/60">{subtitle}</p>
         </div>
@@ -330,9 +440,12 @@ function StatsCard({ title, value, icon: Icon, color, trend, subtitle }) {
 
 function ActionButton({ title, description, icon: Icon, onClick, color }) {
   const colorClasses = {
-    primary: 'bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground border-primary/20',
-    accent: 'bg-accent/10 text-accent group-hover:bg-accent group-hover:text-accent-foreground border-accent/20',
-    muted: 'bg-muted/30 text-muted-foreground group-hover:bg-muted group-hover:text-foreground border-muted/30'
+    primary:
+      "bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground border-primary/20",
+    accent:
+      "bg-accent/10 text-accent group-hover:bg-accent group-hover:text-accent-foreground border-accent/20",
+    muted:
+      "bg-muted/30 text-muted-foreground group-hover:bg-muted group-hover:text-foreground border-muted/30",
   };
 
   return (
@@ -344,14 +457,18 @@ function ActionButton({ title, description, icon: Icon, onClick, color }) {
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
 
       <div className="relative z-10 flex items-center gap-4 w-full">
-        <div className={`w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0 transition-all duration-300 border ${colorClasses[color]}`}>
+        <div
+          className={`w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0 transition-all duration-300 border ${colorClasses[color]}`}
+        >
           <Icon className="w-6 h-6" />
         </div>
         <div className="flex-1 min-w-0">
           <p className="font-bold text-foreground group-hover:text-primary transition-colors uppercase text-xs tracking-widest mb-1">
             {title}
           </p>
-          <p className="text-sm text-muted-foreground truncate">{description}</p>
+          <p className="text-sm text-muted-foreground truncate">
+            {description}
+          </p>
         </div>
         <ArrowRight className="w-5 h-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all flex-shrink-0" />
       </div>
