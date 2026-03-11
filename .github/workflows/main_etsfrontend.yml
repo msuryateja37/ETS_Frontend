@@ -1,10 +1,9 @@
-name: Build and deploy Node.js app to Azure Web App - ETSFrontend
+name: Build and deploy Next.js app to Azure Web App
 
 on:
   push:
     branches:
       - main
-  workflow_dispatch:
 
 jobs:
   build:
@@ -50,6 +49,5 @@ jobs:
         uses: azure/webapps-deploy@v3
         with:
           app-name: ETSFrontend
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_B4067C4C726A499DBC69101B496FD154 }}
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE }}
           package: .
-
