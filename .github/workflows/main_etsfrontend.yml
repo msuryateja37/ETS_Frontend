@@ -1,18 +1,20 @@
-name: Build and deploy Next.js app to Azure Web App
+name: Build and deploy Next.js app to Azure Web App - ETSFrontend
 
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -20,17 +22,17 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build Next.js
+      - name: Build Next.js application
         run: npm run build
 
-      - name: Prepare standalone artifact
+      - name: Prepare standalone deployment package
         run: |
           mkdir -p deploy/.next
           cp -r .next/standalone/* deploy/
           cp -r .next/static deploy/.next/
           cp -r public deploy/
 
-      - name: Upload artifact
+      - name: Upload deployment artifact
         uses: actions/upload-artifact@v4
         with:
           name: next-build
@@ -41,11 +43,12 @@ jobs:
     needs: build
 
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
         with:
           name: next-build
 
-      - name: Deploy to Azure
+      - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: ETSFrontend
