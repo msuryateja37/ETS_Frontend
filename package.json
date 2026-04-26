@@ -3,28 +3,28 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
-  },
+  "dev": "next dev",
+  "build": "next build",
+  "start": "node node_modules/next/dist/bin/next start -p $PORT",
+  "lint": "next lint"
+},
   "dependencies": {
     "@nestjs/platform-socket.io": "^11.1.12",
     "jspdf": "^4.0.0",
     "lucide-react": "^0.562.0",
-    "next": "^16.1.4",
+    "next": "14.2.5",
     "next-auth": "^4.24.13",
     "qrcode": "^1.5.4",
-    "react": "19.2.0",
-    "react-dom": "19.2.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
     "react-icons": "^5.5.0",
     "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
+    "@tailwindcss/postcss": "^4.0.0",
     "babel-plugin-react-compiler": "1.0.0",
-    "eslint": "^9",
-    "eslint-config-next": "16.0.7",
-    "tailwindcss": "^4"
+    "eslint": "^8.57.0",
+    "eslint-config-next": "14.2.5",
+    "tailwindcss": "^4.0.0"
   }
 }
